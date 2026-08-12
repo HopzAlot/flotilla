@@ -7,16 +7,19 @@ import (
 )
 
 // Server wraps a Node with an HTTP transport so other nodes can reach it
-// over the network. Handlers here are deliberately stubbed: they decode
-// the request and log it, but the actual decision (grant vote? accept
-// entries?) is hardcoded. This step only proves nodes can talk — real
-// Raft rules land in Step 4 (election) and Step 5 (replication).
+// over the network, plus the peer addresses it needs to reach them back.
 type Server struct {
-	node *Node
+	node    *Node
+	peers   map[string]string // peer id -> HTTP address, excludes self
+	resetCh chan struct{}
 }
 
-func NewServer(node *Node) *Server {
-	return &Server{node: node}
+func NewServer(node *Node, peers map[string]string) *Server {
+	return &Server{
+		node:    node,
+		peers:   peers,
+		resetCh: make(chan struct{}, 1),
+	}
 }
 
 func (s *Server) handleRequestVote(w http.ResponseWriter, r *http.Request) {
@@ -26,16 +29,40 @@ func (s *Server) handleRequestVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[%s] RequestVote from %s (term=%d, lastLogIndex=%d, lastLogTerm=%d)",
-		s.node.id, args.CandidateID, args.Term, args.LastLogIndex, args.LastLogTerm)
+	s.node.mu.Lock()
+	defer s.node.mu.Unlock()
 
-	// Stub: always refuse. Real vote-granting (term + log-recency checks,
-	// one-vote-per-term) arrives in Step 4.
-	reply := RequestVoteReply{
-		Term:        s.node.currentTerm,
-		VoteGranted: false,
+	// Stale term proof: anything this candidate knows is older than what
+	// we already know. Reject outright, term comparison alone decides it.
+	if args.Term < s.node.currentTerm {
+		reply := RequestVoteReply{Term: s.node.currentTerm, VoteGranted: false}
+		log.Printf("[%s] RequestVote from %s (term=%d) -> rejected: stale term", s.node.id, args.CandidateID, args.Term)
+		json.NewEncoder(w).Encode(reply)
+		return
 	}
 
+	// Newer term proof: our own view is stale. Catch up and forget any
+	// vote already cast this (now-old) term before deciding this request.
+	if args.Term > s.node.currentTerm {
+		s.node.currentTerm = args.Term
+		s.node.state = Follower
+		s.node.votedFor = ""
+	}
+
+	lastLogIndex, lastLogTerm := s.node.lastLogInfo()
+	logIsUpToDate := args.LastLogTerm > lastLogTerm ||
+		(args.LastLogTerm == lastLogTerm && args.LastLogIndex >= lastLogIndex)
+
+	haveNotVotedYet := s.node.votedFor == "" || s.node.votedFor == args.CandidateID
+
+	reply := RequestVoteReply{Term: s.node.currentTerm}
+	if haveNotVotedYet && logIsUpToDate {
+		s.node.votedFor = args.CandidateID
+		reply.VoteGranted = true
+		s.resetElectionTimer() // granting a vote counts as "heard from a peer"
+	}
+
+	log.Printf("[%s] RequestVote from %s (term=%d) -> granted=%v", s.node.id, args.CandidateID, args.Term, reply.VoteGranted)
 	json.NewEncoder(w).Encode(reply)
 }
 
@@ -46,20 +73,38 @@ func (s *Server) handleAppendEntries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[%s] AppendEntries from %s (term=%d, prevLogIndex=%d, entries=%d)",
-		s.node.id, args.LeaderID, args.Term, args.PrevLogIndex, len(args.Entries))
+	s.node.mu.Lock()
+	defer s.node.mu.Unlock()
 
-	// Stub: always reject. Real consistency-check/replication logic
-	// arrives in Step 5; heartbeat handling in Step 4.
-	reply := AppendEntriesReply{
-		Term:    s.node.currentTerm,
-		Success: false,
+	if args.Term < s.node.currentTerm {
+		reply := AppendEntriesReply{Term: s.node.currentTerm, Success: false}
+		log.Printf("[%s] AppendEntries from %s (term=%d) -> rejected: stale term", s.node.id, args.LeaderID, args.Term)
+		json.NewEncoder(w).Encode(reply)
+		return
 	}
 
+	if args.Term > s.node.currentTerm {
+		s.node.currentTerm = args.Term
+		s.node.votedFor = ""
+	}
+	// Any AppendEntries from a current-or-newer-term leader means that
+	// leader is legitimate — step down/stay down and reset our clock.
+	s.node.state = Follower
+	s.resetElectionTimer()
+
+	// NOTE: PrevLogIndex/PrevLogTerm consistency check and actually
+	// appending Entries land in Step 5/6. For now, any accepted call
+	// (heartbeat or otherwise) just proves the leader is alive.
+	reply := AppendEntriesReply{Term: s.node.currentTerm, Success: true}
+	log.Printf("[%s] AppendEntries from %s (term=%d, entries=%d) -> accepted", s.node.id, args.LeaderID, args.Term, len(args.Entries))
 	json.NewEncoder(w).Encode(reply)
 }
 
-func (s *Server) ListenAndServe(addr string) error {
+// Run starts both the election-timeout goroutine and the HTTP server.
+// ListenAndServe blocks, so the timer has to be started first.
+func (s *Server) Run(addr string) error {
+	go s.runElectionTimer()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/requestvote", s.handleRequestVote)
 	mux.HandleFunc("/appendentries", s.handleAppendEntries)

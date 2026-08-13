@@ -132,6 +132,18 @@ func (s *Server) becomeLeader(term int) {
 		return
 	}
 	s.node.state = Leader
+
+	// Reinitialize leader-only state fresh for this term: nextIndex starts
+	// optimistic (assume every peer is fully caught up), matchIndex starts
+	// at zero (nothing proven yet). Both get corrected by real replies once
+	// AppendEntries actually carries log entries.
+	lastLogIndex, _ := s.node.lastLogInfo()
+	s.nextIndex = make(map[string]int)
+	s.matchIndex = make(map[string]int)
+	for peerID := range s.peers {
+		s.nextIndex[peerID] = lastLogIndex + 1
+		s.matchIndex[peerID] = 0
+	}
 	s.node.mu.Unlock()
 
 	log.Printf("[%s] *** elected Leader for term %d ***", s.node.id, term)

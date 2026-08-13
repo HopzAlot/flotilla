@@ -12,6 +12,13 @@ type Server struct {
 	node    *Node
 	peers   map[string]string // peer id -> HTTP address, excludes self
 	resetCh chan struct{}
+
+	// Leader-only volatile state (Raft Figure 2): reinitialized every time
+	// this node becomes leader, meaningless otherwise. Guarded by node.mu
+	// rather than a separate lock, since advancing commitIndex has to read
+	// matchIndex and node.log together consistently.
+	nextIndex  map[string]int // peer id -> next log index leader will send them
+	matchIndex map[string]int // peer id -> highest log index leader has confirmed on them
 }
 
 func NewServer(node *Node, peers map[string]string) *Server {

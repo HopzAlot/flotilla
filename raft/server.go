@@ -97,6 +97,7 @@ func (s *Server) handleAppendEntries(w http.ResponseWriter, r *http.Request) {
 	// Any AppendEntries from a current-or-newer-term leader means that
 	// leader is legitimate — step down/stay down and reset our clock.
 	s.node.state = Follower
+	s.node.leaderID = args.LeaderID
 	s.resetElectionTimer()
 
 	// NOTE: PrevLogIndex/PrevLogTerm consistency check and actually
@@ -107,6 +108,45 @@ func (s *Server) handleAppendEntries(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(reply)
 }
 
+// SubmitReply tells a client whether its command was accepted. LeaderHint
+// is only a best-known guess — it's the last leaderID this node observed,
+// so it can be empty (this node has never seen a leader) or stale (that
+// node has since crashed or lost an election). Good enough to retry with,
+// never something to trust blindly.
+type SubmitReply struct {
+	Success    bool
+	LeaderHint string
+}
+
+// handleSubmit is how a client actually gets a command into the cluster.
+// Only the leader may append to its own log here — every other node
+// rejects outright rather than forwarding, so the client is the one doing
+// the retry, not some hidden hop-through-the-cluster relay.
+func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
+	var cmd Command
+	if err := json.NewDecoder(r.Body).Decode(&cmd); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	s.node.mu.Lock()
+	if s.node.state != Leader {
+		hint := s.node.leaderID
+		s.node.mu.Unlock()
+		log.Printf("[%s] Submit %+v -> rejected: not leader (hint=%q)", s.node.id, cmd, hint)
+		json.NewEncoder(w).Encode(SubmitReply{Success: false, LeaderHint: hint})
+		return
+	}
+
+	lastLogIndex, _ := s.node.lastLogInfo()
+	entry := LogEntry{Term: s.node.currentTerm, Index: lastLogIndex + 1, Command: cmd}
+	s.node.log = append(s.node.log, entry)
+	s.node.mu.Unlock()
+
+	log.Printf("[%s] Submit %+v -> appended at index %d", s.node.id, cmd, entry.Index)
+	json.NewEncoder(w).Encode(SubmitReply{Success: true})
+}
+
 // Run starts both the election-timeout goroutine and the HTTP server.
 // ListenAndServe blocks, so the timer has to be started first.
 func (s *Server) Run(addr string) error {
@@ -115,6 +155,7 @@ func (s *Server) Run(addr string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/requestvote", s.handleRequestVote)
 	mux.HandleFunc("/appendentries", s.handleAppendEntries)
+	mux.HandleFunc("/submit", s.handleSubmit)
 	log.Printf("[%s] listening on %s", s.node.id, addr)
 	return http.ListenAndServe(addr, mux)
 }

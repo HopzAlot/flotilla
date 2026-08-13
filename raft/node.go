@@ -45,6 +45,12 @@ type Node struct {
 	// Volatile state — rebuilt from the log/persisted state on every restart.
 	commitIndex int
 	lastApplied int
+
+	// leaderID isn't part of Figure 2 — it's a convenience hint, the last
+	// LeaderID a follower has seen in an accepted AppendEntries, used only
+	// to tell a misdirected client where to retry. Never trusted for
+	// anything safety-related.
+	leaderID string
 }
 
 // NewNode constructs a Node in the initial Follower state every Raft node

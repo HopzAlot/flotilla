@@ -51,6 +51,12 @@ type Node struct {
 	// to tell a misdirected client where to retry. Never trusted for
 	// anything safety-related.
 	leaderID string
+
+	// kv is the state machine every committed entry eventually reaches.
+	// Every node — leader or follower — runs the same log through the
+	// same Apply calls in the same order, which is what makes them all
+	// converge on identical state.
+	kv *KVStore
 }
 
 // NewNode constructs a Node in the initial Follower state every Raft node
@@ -64,6 +70,7 @@ func NewNode(id string) *Node {
 		log:         []LogEntry{},
 		commitIndex: 0,
 		lastApplied: 0,
+		kv:          NewKVStore(),
 	}
 }
 
@@ -91,4 +98,20 @@ func (n *Node) termAtIndex(index int) int {
 		return 0
 	}
 	return n.log[index-1].Term
+}
+
+// applyCommitted feeds every entry between lastApplied and commitIndex
+// into the state machine, in order, one at a time. Callers must hold
+// n.mu — safe to do inline like this because KVStore.Apply guards its
+// own separate lock and only ever does a fast map write, so it's not
+// worth handing this off to a dedicated goroutine for this project's
+// scope. This is what turns "safely committed" into "actually visible
+// on a read" — before this runs, commitIndex moving is invisible to
+// anyone actually querying the store.
+func (n *Node) applyCommitted() {
+	for n.lastApplied < n.commitIndex {
+		n.lastApplied++
+		entry := n.log[n.lastApplied-1]
+		n.kv.Apply(entry)
+	}
 }

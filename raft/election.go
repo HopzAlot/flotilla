@@ -251,6 +251,7 @@ func (s *Server) advanceCommitIndex(term int) {
 		if count*2 > len(s.peers)+1 {
 			s.node.commitIndex = n
 			log.Printf("[%s] commitIndex advanced to %d (term %d, %d/%d replicated)", s.node.id, n, term, count, len(s.peers)+1)
+			s.node.applyCommitted()
 			return
 		}
 	}

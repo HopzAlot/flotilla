@@ -137,6 +137,7 @@ func (s *Server) handleAppendEntries(w http.ResponseWriter, r *http.Request) {
 	if args.LeaderCommit > s.node.commitIndex {
 		s.node.commitIndex = min(args.LeaderCommit, len(s.node.log))
 		log.Printf("[%s] commitIndex advanced to %d (leaderCommit=%d)", s.node.id, s.node.commitIndex, args.LeaderCommit)
+		s.node.applyCommitted()
 	}
 
 	reply := AppendEntriesReply{Term: s.node.currentTerm, Success: true}
@@ -183,6 +184,17 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(SubmitReply{Success: true})
 }
 
+// handleDebugGet is a raw, unguarded peek at this node's own local state
+// machine — NOT the real client read path. It can return stale data on a
+// lagging follower, or even on a leader that's been silently partitioned
+// away. Making reads actually safe is Step 7.5's job; this exists only so
+// Step 5's apply logic can be observed while it's being built.
+func (s *Server) handleDebugGet(w http.ResponseWriter, r *http.Request) {
+	key := r.URL.Query().Get("key")
+	val, ok := s.node.kv.Get(key)
+	json.NewEncoder(w).Encode(map[string]any{"value": val, "found": ok})
+}
+
 // Run starts both the election-timeout goroutine and the HTTP server.
 // ListenAndServe blocks, so the timer has to be started first.
 func (s *Server) Run(addr string) error {
@@ -192,6 +204,7 @@ func (s *Server) Run(addr string) error {
 	mux.HandleFunc("/requestvote", s.handleRequestVote)
 	mux.HandleFunc("/appendentries", s.handleAppendEntries)
 	mux.HandleFunc("/submit", s.handleSubmit)
+	mux.HandleFunc("/debug/get", s.handleDebugGet)
 	log.Printf("[%s] listening on %s", s.node.id, addr)
 	return http.ListenAndServe(addr, mux)
 }

@@ -185,6 +185,7 @@ func (s *Server) sendHeartbeats(term int) {
 			// concurrent Submit after we unlock, and we must not send (or
 			// race on) whatever that append does to the backing array.
 			entries := append([]LogEntry(nil), s.node.log[prevLogIndex:]...)
+			leaderCommit := s.node.commitIndex
 			s.node.mu.Unlock()
 
 			args := AppendEntriesArgs{
@@ -193,6 +194,7 @@ func (s *Server) sendHeartbeats(term int) {
 				PrevLogIndex: prevLogIndex,
 				PrevLogTerm:  prevLogTerm,
 				Entries:      entries,
+				LeaderCommit: leaderCommit,
 			}
 			reply, err := s.sendAppendEntries(addr, args)
 			if err != nil {
@@ -214,6 +216,7 @@ func (s *Server) sendHeartbeats(term int) {
 			if reply.Success {
 				s.matchIndex[peerID] = prevLogIndex + len(entries)
 				s.nextIndex[peerID] = s.matchIndex[peerID] + 1
+				s.advanceCommitIndex(term)
 			} else if s.nextIndex[peerID] > 1 {
 				// Consistency check failed on the peer's end: our guess
 				// was too optimistic. Back off by one and try again next
@@ -222,5 +225,33 @@ func (s *Server) sendHeartbeats(term int) {
 				s.nextIndex[peerID]--
 			}
 		}(peerID, addr)
+	}
+}
+
+// advanceCommitIndex checks whether matchIndex now shows a majority
+// replicating some new index, and if so moves commitIndex forward.
+// Callers must hold n.mu. Per the Figure 8 safety rule, an entry can only
+// be committed directly if it was created in the leader's own current
+// term — older-term entries become committed indirectly, as a side effect
+// of a later same-term entry committing over them (guaranteed safe by the
+// Log Matching Property: matching at a later index implies matching all
+// the way back).
+func (s *Server) advanceCommitIndex(term int) {
+	lastLogIndex, _ := s.node.lastLogInfo()
+	for n := lastLogIndex; n > s.node.commitIndex; n-- {
+		if s.node.termAtIndex(n) != term {
+			continue
+		}
+		count := 1 // the leader itself always has its own entries
+		for peerID := range s.peers {
+			if s.matchIndex[peerID] >= n {
+				count++
+			}
+		}
+		if count*2 > len(s.peers)+1 {
+			s.node.commitIndex = n
+			log.Printf("[%s] commitIndex advanced to %d (term %d, %d/%d replicated)", s.node.id, n, term, count, len(s.peers)+1)
+			return
+		}
 	}
 }

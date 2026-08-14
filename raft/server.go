@@ -130,6 +130,15 @@ func (s *Server) handleAppendEntries(w http.ResponseWriter, r *http.Request) {
 		break
 	}
 
+	// The leader may know about commits we haven't heard of yet, but we
+	// can never claim to have committed further than what we actually
+	// hold locally — hence the min. We'll catch up on a later call once
+	// more entries have actually landed in our own log.
+	if args.LeaderCommit > s.node.commitIndex {
+		s.node.commitIndex = min(args.LeaderCommit, len(s.node.log))
+		log.Printf("[%s] commitIndex advanced to %d (leaderCommit=%d)", s.node.id, s.node.commitIndex, args.LeaderCommit)
+	}
+
 	reply := AppendEntriesReply{Term: s.node.currentTerm, Success: true}
 	log.Printf("[%s] AppendEntries from %s (term=%d, entries=%d) -> accepted, log len=%d", s.node.id, args.LeaderID, args.Term, len(args.Entries), len(s.node.log))
 	json.NewEncoder(w).Encode(reply)

@@ -100,11 +100,38 @@ func (s *Server) handleAppendEntries(w http.ResponseWriter, r *http.Request) {
 	s.node.leaderID = args.LeaderID
 	s.resetElectionTimer()
 
-	// NOTE: PrevLogIndex/PrevLogTerm consistency check and actually
-	// appending Entries land in Step 5/6. For now, any accepted call
-	// (heartbeat or otherwise) just proves the leader is alive.
+	// Consistency check: our log must already agree with the leader's up
+	// to PrevLogIndex, or we refuse the entries outright. PrevLogIndex==0
+	// always agrees trivially — there's nothing before entry 1 to disagree
+	// on. Otherwise we need an entry at that index, with that exact term.
+	if args.PrevLogIndex > 0 {
+		if args.PrevLogIndex > len(s.node.log) || s.node.log[args.PrevLogIndex-1].Term != args.PrevLogTerm {
+			reply := AppendEntriesReply{Term: s.node.currentTerm, Success: false}
+			log.Printf("[%s] AppendEntries from %s (term=%d) -> rejected: log mismatch at index %d", s.node.id, args.LeaderID, args.Term, args.PrevLogIndex)
+			json.NewEncoder(w).Encode(reply)
+			return
+		}
+	}
+
+	// Check passed — merge in the new entries. Walk them in order: skip
+	// any we already have that match exactly (a retransmitted call we've
+	// already applied), truncate-and-overwrite on the first mismatch
+	// (leftover entries from a dead/former leader that never committed),
+	// or append past the end of what we've got.
+	for i, entry := range args.Entries {
+		idx := args.PrevLogIndex + 1 + i
+		if idx <= len(s.node.log) {
+			if s.node.log[idx-1].Term == entry.Term {
+				continue
+			}
+			s.node.log = s.node.log[:idx-1] // conflict: discard this entry onward
+		}
+		s.node.log = append(s.node.log, args.Entries[i:]...)
+		break
+	}
+
 	reply := AppendEntriesReply{Term: s.node.currentTerm, Success: true}
-	log.Printf("[%s] AppendEntries from %s (term=%d, entries=%d) -> accepted", s.node.id, args.LeaderID, args.Term, len(args.Entries))
+	log.Printf("[%s] AppendEntries from %s (term=%d, entries=%d) -> accepted, log len=%d", s.node.id, args.LeaderID, args.Term, len(args.Entries), len(s.node.log))
 	json.NewEncoder(w).Encode(reply)
 }
 

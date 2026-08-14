@@ -80,3 +80,15 @@ func (n *Node) lastLogInfo() (index, term int) {
 	last := n.log[len(n.log)-1]
 	return last.Index, last.Term
 }
+
+// termAtIndex returns the term of the log entry at the given 1-based
+// index, or 0 for index 0 (the "before the log even starts" sentinel used
+// as PrevLogTerm when PrevLogIndex is 0). Callers must hold n.mu. Relies
+// on n.log never having gaps — index i is always at slice position i-1 —
+// which holds until Step 6.5 adds compaction.
+func (n *Node) termAtIndex(index int) int {
+	if index == 0 {
+		return 0
+	}
+	return n.log[index-1].Term
+}

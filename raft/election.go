@@ -170,25 +170,57 @@ func (s *Server) runHeartbeats(term int) {
 	}
 }
 
+// sendHeartbeats fires one AppendEntries per peer, every tick. Despite the
+// name, this doubles as the replication path: whatever entries a peer's
+// nextIndex says it's missing ride along on the very same call. An
+// up-to-date peer just gets an empty Entries slice, which is what makes
+// it "a heartbeat" — there's no separate RPC for the two purposes.
 func (s *Server) sendHeartbeats(term int) {
 	for peerID, addr := range s.peers {
 		go func(peerID, addr string) {
+			s.node.mu.Lock()
+			prevLogIndex := s.nextIndex[peerID] - 1
+			prevLogTerm := s.node.termAtIndex(prevLogIndex)
+			// Copy, not a reslice — s.node.log can be appended to by a
+			// concurrent Submit after we unlock, and we must not send (or
+			// race on) whatever that append does to the backing array.
+			entries := append([]LogEntry(nil), s.node.log[prevLogIndex:]...)
+			s.node.mu.Unlock()
+
 			args := AppendEntriesArgs{
-				Term:     term,
-				LeaderID: s.node.id,
+				Term:         term,
+				LeaderID:     s.node.id,
+				PrevLogIndex: prevLogIndex,
+				PrevLogTerm:  prevLogTerm,
+				Entries:      entries,
 			}
 			reply, err := s.sendAppendEntries(addr, args)
 			if err != nil {
 				return
 			}
+
 			s.node.mu.Lock()
+			defer s.node.mu.Unlock()
 			if reply.Term > s.node.currentTerm {
 				log.Printf("[%s] saw higher term %d in heartbeat reply, stepping down", s.node.id, reply.Term)
 				s.node.currentTerm = reply.Term
 				s.node.state = Follower
 				s.node.votedFor = ""
+				return
 			}
-			s.node.mu.Unlock()
+			if s.node.state != Leader || s.node.currentTerm != term {
+				return // stale reply, no longer leader of this term
+			}
+			if reply.Success {
+				s.matchIndex[peerID] = prevLogIndex + len(entries)
+				s.nextIndex[peerID] = s.matchIndex[peerID] + 1
+			} else if s.nextIndex[peerID] > 1 {
+				// Consistency check failed on the peer's end: our guess
+				// was too optimistic. Back off by one and try again next
+				// tick — the negotiation from the nextIndex/matchIndex
+				// example.
+				s.nextIndex[peerID]--
+			}
 		}(peerID, addr)
 	}
 }

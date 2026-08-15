@@ -62,6 +62,7 @@ func (s *Server) startElection() {
 	s.node.votedFor = s.node.id
 	term := s.node.currentTerm
 	lastLogIndex, lastLogTerm := s.node.lastLogInfo()
+	s.node.persist() // term bump + self-vote must be durable before any RequestVote RPC goes out
 	s.node.mu.Unlock()
 
 	log.Printf("[%s] election timeout -> Candidate for term %d", s.node.id, term)

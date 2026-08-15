@@ -1,6 +1,9 @@
 package raft
 
-import "sync"
+import (
+	"log"
+	"sync"
+)
 
 // NodeState is which of the three Raft roles this node currently plays.
 // Behavior for every RPC depends on this — a Follower and a Leader handle
@@ -57,11 +60,17 @@ type Node struct {
 	// same Apply calls in the same order, which is what makes them all
 	// converge on identical state.
 	kv *KVStore
+
+	// storage is this node's own on-disk file — never shared with any
+	// other node. Every write to currentTerm/votedFor/log must go through
+	// persist() before any RPC reply that depended on it is sent.
+	storage *Storage
 }
 
 // NewNode constructs a Node in the initial Follower state every Raft node
-// starts in — nobody begins as a leader.
-func NewNode(id string) *Node {
+// starts in — nobody begins as a leader. storage is this node's own
+// persistent-state file, already opened by the caller.
+func NewNode(id string, storage *Storage) *Node {
 	return &Node{
 		id:          id,
 		state:       Follower,
@@ -71,6 +80,19 @@ func NewNode(id string) *Node {
 		commitIndex: 0,
 		lastApplied: 0,
 		kv:          NewKVStore(),
+		storage:     storage,
+	}
+}
+
+// persist writes the current currentTerm/votedFor/log triple to disk as
+// one atomic transaction. Callers must hold n.mu, and must call this
+// before sending any RPC reply that depends on the change being durable —
+// otherwise a crash between "reply sent" and "state saved" can make a
+// node forget a vote it already promised, and grant it again after
+// restart. See Storage.Save for the atomicity guarantee this relies on.
+func (n *Node) persist() {
+	if err := n.storage.Save(n.currentTerm, n.votedFor, n.log); err != nil {
+		log.Printf("[%s] failed to persist state: %v", n.id, err)
 	}
 }
 

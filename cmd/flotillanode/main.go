@@ -30,7 +30,12 @@ func main() {
 	peersFlag := flag.String("peers", "", "comma-separated peer list, e.g. node2=localhost:8002,node3=localhost:8003")
 	flag.Parse()
 
-	node := raft.NewNode(*id)
+	storage, err := raft.NewStorage(*id + ".db")
+	if err != nil {
+		log.Fatalf("failed to open storage for %s: %v", *id, err)
+	}
+
+	node := raft.NewNode(*id, storage)
 	server := raft.NewServer(node, parsePeers(*peersFlag))
 
 	if err := server.Run(*addr); err != nil {

@@ -69,6 +69,7 @@ func (s *Server) handleRequestVote(w http.ResponseWriter, r *http.Request) {
 		s.resetElectionTimer() // granting a vote counts as "heard from a peer"
 	}
 
+	s.node.persist() // term may have bumped and/or a vote may have been granted above
 	log.Printf("[%s] RequestVote from %s (term=%d) -> granted=%v", s.node.id, args.CandidateID, args.Term, reply.VoteGranted)
 	json.NewEncoder(w).Encode(reply)
 }
@@ -106,6 +107,7 @@ func (s *Server) handleAppendEntries(w http.ResponseWriter, r *http.Request) {
 	// on. Otherwise we need an entry at that index, with that exact term.
 	if args.PrevLogIndex > 0 {
 		if args.PrevLogIndex > len(s.node.log) || s.node.log[args.PrevLogIndex-1].Term != args.PrevLogTerm {
+			s.node.persist() // term may have just bumped above; must be durable before this reply goes out
 			reply := AppendEntriesReply{Term: s.node.currentTerm, Success: false}
 			log.Printf("[%s] AppendEntries from %s (term=%d) -> rejected: log mismatch at index %d", s.node.id, args.LeaderID, args.Term, args.PrevLogIndex)
 			json.NewEncoder(w).Encode(reply)
@@ -140,6 +142,7 @@ func (s *Server) handleAppendEntries(w http.ResponseWriter, r *http.Request) {
 		s.node.applyCommitted()
 	}
 
+	s.node.persist() // term may have bumped above and/or the merge loop just changed the log
 	reply := AppendEntriesReply{Term: s.node.currentTerm, Success: true}
 	log.Printf("[%s] AppendEntries from %s (term=%d, entries=%d) -> accepted, log len=%d", s.node.id, args.LeaderID, args.Term, len(args.Entries), len(s.node.log))
 	json.NewEncoder(w).Encode(reply)
@@ -178,6 +181,7 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	lastLogIndex, _ := s.node.lastLogInfo()
 	entry := LogEntry{Term: s.node.currentTerm, Index: lastLogIndex + 1, Command: cmd}
 	s.node.log = append(s.node.log, entry)
+	s.node.persist()
 	s.node.mu.Unlock()
 
 	log.Printf("[%s] Submit %+v -> appended at index %d", s.node.id, cmd, entry.Index)

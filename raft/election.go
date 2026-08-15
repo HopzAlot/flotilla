@@ -185,7 +185,7 @@ func (s *Server) sendHeartbeats(term int) {
 			// Copy, not a reslice — s.node.log can be appended to by a
 			// concurrent Submit after we unlock, and we must not send (or
 			// race on) whatever that append does to the backing array.
-			entries := append([]LogEntry(nil), s.node.log[prevLogIndex:]...)
+			entries := append([]LogEntry(nil), s.node.log[s.node.posForIndex(prevLogIndex+1):]...)
 			leaderCommit := s.node.commitIndex
 			s.node.mu.Unlock()
 

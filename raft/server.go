@@ -105,8 +105,8 @@ func (s *Server) handleAppendEntries(w http.ResponseWriter, r *http.Request) {
 	// to PrevLogIndex, or we refuse the entries outright. PrevLogIndex==0
 	// always agrees trivially — there's nothing before entry 1 to disagree
 	// on. Otherwise we need an entry at that index, with that exact term.
-	if args.PrevLogIndex > 0 {
-		if args.PrevLogIndex > len(s.node.log) || s.node.log[args.PrevLogIndex-1].Term != args.PrevLogTerm {
+	if args.PrevLogIndex > s.node.lastIncludedIndex {
+		if args.PrevLogIndex > s.node.lastIncludedIndex+len(s.node.log) || s.node.termAtIndex(args.PrevLogIndex) != args.PrevLogTerm {
 			s.node.persist() // term may have just bumped above; must be durable before this reply goes out
 			reply := AppendEntriesReply{Term: s.node.currentTerm, Success: false}
 			log.Printf("[%s] AppendEntries from %s (term=%d) -> rejected: log mismatch at index %d", s.node.id, args.LeaderID, args.Term, args.PrevLogIndex)
@@ -122,11 +122,11 @@ func (s *Server) handleAppendEntries(w http.ResponseWriter, r *http.Request) {
 	// or append past the end of what we've got.
 	for i, entry := range args.Entries {
 		idx := args.PrevLogIndex + 1 + i
-		if idx <= len(s.node.log) {
-			if s.node.log[idx-1].Term == entry.Term {
+		if idx <= s.node.lastIncludedIndex+len(s.node.log) {
+			if s.node.log[s.node.posForIndex(idx)].Term == entry.Term {
 				continue
 			}
-			s.node.log = s.node.log[:idx-1] // conflict: discard this entry onward
+			s.node.log = s.node.log[:s.node.posForIndex(idx)] // conflict: discard this entry onward
 		}
 		s.node.log = append(s.node.log, args.Entries[i:]...)
 		break

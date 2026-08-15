@@ -45,6 +45,16 @@ type Node struct {
 	votedFor    string // "" means no vote cast yet this term
 	log         []LogEntry
 
+	// lastIncludedIndex/lastIncludedTerm describe the highest Raft index
+	// and its term folded into the most recent snapshot (Step 6.5). Once
+	// compaction starts discarding entries, n.log[0] no longer holds Raft
+	// index 1 — it holds index lastIncludedIndex+1. Every conversion
+	// between a Raft log index and a position in n.log must go through
+	// posForIndex, which is why these two fields exist even before
+	// anything actually gets discarded.
+	lastIncludedIndex int
+	lastIncludedTerm  int
+
 	// Volatile state — rebuilt from the log/persisted state on every restart.
 	commitIndex int
 	lastApplied int
@@ -105,30 +115,43 @@ func (n *Node) persist() {
 	}
 }
 
-// lastLogInfo returns the index/term of the most recent log entry, or
-// (0, 0) for an empty log. Callers must hold n.mu. Used by the
-// RequestVote log-recency check — with no log yet (Step 5 adds real
-// entries), this trivially returns (0, 0) for every node, which is
-// correct and forward-compatible: it becomes meaningful once logs
-// actually diverge.
+// lastLogInfo returns the index/term of the most recent log entry. If
+// n.log is empty, that no longer means "nothing to report" once
+// compaction exists — it can mean every entry this node ever had is now
+// folded into a snapshot, in which case lastIncludedIndex/Term is the
+// real answer. Reporting (0, 0) here for a fully-snapshotted node would
+// wrongly make it look less up-to-date than it is in the RequestVote
+// check. Callers must hold n.mu.
 func (n *Node) lastLogInfo() (index, term int) {
 	if len(n.log) == 0 {
-		return 0, 0
+		return n.lastIncludedIndex, n.lastIncludedTerm
 	}
 	last := n.log[len(n.log)-1]
 	return last.Index, last.Term
 }
 
-// termAtIndex returns the term of the log entry at the given 1-based
-// index, or 0 for index 0 (the "before the log even starts" sentinel used
-// as PrevLogTerm when PrevLogIndex is 0). Callers must hold n.mu. Relies
-// on n.log never having gaps — index i is always at slice position i-1 —
-// which holds until Step 6.5 adds compaction.
+// posForIndex converts a Raft log index into a position in n.log. Only
+// valid for index > n.lastIncludedIndex — anything at or before that
+// boundary has no position in n.log at all (see termAtIndex). Callers
+// must hold n.mu.
+func (n *Node) posForIndex(index int) int {
+	return index - n.lastIncludedIndex - 1
+}
+
+// termAtIndex returns the term of the log entry at the given Raft index.
+// index == n.lastIncludedIndex is the boundary case — that entry's term
+// is remembered directly on Node rather than in n.log, since compaction
+// may have discarded the entry itself while still needing its term for
+// future consistency checks. For a fresh node, lastIncludedIndex is 0 and
+// this collapses to the original "before the log even starts" sentinel.
+// Callers must hold n.mu, and must never ask about an index below
+// lastIncludedIndex — Step 6.5's InstallSnapshot path exists specifically
+// to guarantee no caller needs to.
 func (n *Node) termAtIndex(index int) int {
-	if index == 0 {
-		return 0
+	if index == n.lastIncludedIndex {
+		return n.lastIncludedTerm
 	}
-	return n.log[index-1].Term
+	return n.log[n.posForIndex(index)].Term
 }
 
 // applyCommitted feeds every entry between lastApplied and commitIndex
@@ -142,7 +165,7 @@ func (n *Node) termAtIndex(index int) int {
 func (n *Node) applyCommitted() {
 	for n.lastApplied < n.commitIndex {
 		n.lastApplied++
-		entry := n.log[n.lastApplied-1]
+		entry := n.log[n.posForIndex(n.lastApplied)]
 		n.kv.Apply(entry)
 	}
 }

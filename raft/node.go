@@ -67,16 +67,25 @@ type Node struct {
 	storage *Storage
 }
 
-// NewNode constructs a Node in the initial Follower state every Raft node
-// starts in — nobody begins as a leader. storage is this node's own
-// persistent-state file, already opened by the caller.
+// NewNode constructs a Node, restoring currentTerm/votedFor/log from
+// storage if this id has persisted state from a previous run — a fresh
+// file's Load() returns the same zero values a brand new node would use
+// anyway, so no separate "first ever boot" branch is needed. Every node
+// still starts life in the Follower state regardless of what its old term
+// was — no node is trusted to resume as Leader just because it remembers
+// once being one; it has to win an election again like everyone else.
 func NewNode(id string, storage *Storage) *Node {
+	currentTerm, votedFor, storedLog, err := storage.Load()
+	if err != nil {
+		log.Fatalf("[%s] failed to load persisted state: %v", id, err)
+	}
+
 	return &Node{
 		id:          id,
 		state:       Follower,
-		currentTerm: 0,
-		votedFor:    "",
-		log:         []LogEntry{},
+		currentTerm: currentTerm,
+		votedFor:    votedFor,
+		log:         storedLog,
 		commitIndex: 0,
 		lastApplied: 0,
 		kv:          NewKVStore(),

@@ -35,3 +35,21 @@ type AppendEntriesReply struct {
 	Term    int
 	Success bool
 }
+
+// InstallSnapshotArgs is sent by the leader when a peer's nextIndex has
+// fallen at or behind the leader's own lastIncludedIndex — the entries
+// that peer needs no longer exist anywhere in the leader's log, only in
+// this snapshot. Data is the serialized KV map (same JSON shape as what
+// Storage.SaveSnapshot persists), sent as one unchunked blob — real
+// systems stream this in chunks for large state, out of scope here.
+type InstallSnapshotArgs struct {
+	Term              int
+	LeaderID          string
+	LastIncludedIndex int
+	LastIncludedTerm  int
+	Data              []byte
+}
+
+type InstallSnapshotReply struct {
+	Term int
+}

@@ -137,7 +137,7 @@ func (s *Server) handleAppendEntries(w http.ResponseWriter, r *http.Request) {
 	// hold locally — hence the min. We'll catch up on a later call once
 	// more entries have actually landed in our own log.
 	if args.LeaderCommit > s.node.commitIndex {
-		s.node.commitIndex = min(args.LeaderCommit, len(s.node.log))
+		s.node.commitIndex = min(args.LeaderCommit, s.node.lastIncludedIndex+len(s.node.log))
 		log.Printf("[%s] commitIndex advanced to %d (leaderCommit=%d)", s.node.id, s.node.commitIndex, args.LeaderCommit)
 		s.node.applyCommitted()
 	}
@@ -188,6 +188,75 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(SubmitReply{Success: true})
 }
 
+// handleInstallSnapshot receives a leader's snapshot when this node has
+// fallen too far behind for ordinary AppendEntries to catch it up — the
+// entries it needs no longer exist in the leader's log at all. Always
+// wholesale-replaces the local log rather than trying to keep a matching
+// suffix (a valid Raft optimization the paper calls out as optional, not
+// a correctness requirement) — simpler, and always safe, since a
+// currently-valid leader's snapshot is authoritative regardless of what
+// this node had locally.
+func (s *Server) handleInstallSnapshot(w http.ResponseWriter, r *http.Request) {
+	var args InstallSnapshotArgs
+	if err := json.NewDecoder(r.Body).Decode(&args); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	s.node.mu.Lock()
+	defer s.node.mu.Unlock()
+
+	if args.Term < s.node.currentTerm {
+		reply := InstallSnapshotReply{Term: s.node.currentTerm}
+		log.Printf("[%s] InstallSnapshot from %s (term=%d) -> rejected: stale term", s.node.id, args.LeaderID, args.Term)
+		json.NewEncoder(w).Encode(reply)
+		return
+	}
+
+	if args.Term > s.node.currentTerm {
+		s.node.currentTerm = args.Term
+		s.node.votedFor = ""
+	}
+	s.node.state = Follower
+	s.node.leaderID = args.LeaderID
+	s.resetElectionTimer()
+
+	// Idempotency/staleness guard: a retried or reordered call for a
+	// boundary we've already adopted (or moved past) must not roll our
+	// own state backward.
+	if args.LastIncludedIndex <= s.node.lastIncludedIndex {
+		s.node.persist()
+		reply := InstallSnapshotReply{Term: s.node.currentTerm}
+		log.Printf("[%s] InstallSnapshot from %s (term=%d) -> ignored: already have index %d", s.node.id, args.LeaderID, args.Term, args.LastIncludedIndex)
+		json.NewEncoder(w).Encode(reply)
+		return
+	}
+
+	var data map[string]string
+	if err := json.Unmarshal(args.Data, &data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.node.kv.Restore(data)
+
+	s.node.log = []LogEntry{}
+	s.node.lastIncludedIndex = args.LastIncludedIndex
+	s.node.lastIncludedTerm = args.LastIncludedTerm
+	// Everything up to a leader-supplied snapshot boundary is, by
+	// definition, already committed and applied — this node just adopted
+	// that exact state wholesale via kv.Restore above.
+	s.node.commitIndex = args.LastIncludedIndex
+	s.node.lastApplied = args.LastIncludedIndex
+
+	if err := s.node.storage.SaveSnapshot(s.node.lastIncludedIndex, s.node.lastIncludedTerm, s.node.log, args.Data); err != nil {
+		log.Printf("[%s] failed to persist installed snapshot: %v", s.node.id, err)
+	}
+
+	reply := InstallSnapshotReply{Term: s.node.currentTerm}
+	log.Printf("[%s] InstallSnapshot from %s (term=%d) -> installed snapshot at index %d", s.node.id, args.LeaderID, args.Term, args.LastIncludedIndex)
+	json.NewEncoder(w).Encode(reply)
+}
+
 // handleDebugGet is a raw, unguarded peek at this node's own local state
 // machine — NOT the real client read path. It can return stale data on a
 // lagging follower, or even on a leader that's been silently partitioned
@@ -207,6 +276,7 @@ func (s *Server) Run(addr string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/requestvote", s.handleRequestVote)
 	mux.HandleFunc("/appendentries", s.handleAppendEntries)
+	mux.HandleFunc("/installsnapshot", s.handleInstallSnapshot)
 	mux.HandleFunc("/submit", s.handleSubmit)
 	mux.HandleFunc("/debug/get", s.handleDebugGet)
 	log.Printf("[%s] listening on %s", s.node.id, addr)

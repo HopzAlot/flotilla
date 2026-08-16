@@ -13,9 +13,12 @@ import (
 var stateBucket = []byte("raft-state")
 
 const (
-	keyCurrentTerm = "currentTerm"
-	keyVotedFor    = "votedFor"
-	keyLog         = "log"
+	keyCurrentTerm       = "currentTerm"
+	keyVotedFor          = "votedFor"
+	keyLog               = "log"
+	keyLastIncludedIndex = "lastIncludedIndex"
+	keyLastIncludedTerm  = "lastIncludedTerm"
+	keySnapshot          = "snapshot"
 )
 
 // Storage is one node's on-disk persistent state, backed by its own BoltDB
@@ -64,11 +67,38 @@ func (s *Storage) Save(currentTerm int, votedFor string, log []LogEntry) error {
 	})
 }
 
-// Load reads back currentTerm, votedFor, and log. On a brand new file (no
-// node has ever saved here before), it returns the same zero values a
-// fresh NewNode would use — so callers don't need a separate "first ever
-// boot" case.
-func (s *Storage) Load() (currentTerm int, votedFor string, log []LogEntry, err error) {
+// SaveSnapshot writes the truncated log together with lastIncludedIndex,
+// lastIncludedTerm, and the serialized KV snapshot — all four in one
+// transaction, called only when compaction actually runs (unlike Save,
+// which every RPC reply triggers). They have to land atomically: a crash
+// between "log truncated on disk" and "snapshot bytes saved" would lose
+// the entries covering that gap from both places at once, permanently.
+func (s *Storage) SaveSnapshot(lastIncludedIndex, lastIncludedTerm int, log []LogEntry, kvSnapshot []byte) error {
+	logBytes, err := json.Marshal(log)
+	if err != nil {
+		return err
+	}
+	return s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(stateBucket)
+		if err := b.Put([]byte(keyLastIncludedIndex), []byte(strconv.Itoa(lastIncludedIndex))); err != nil {
+			return err
+		}
+		if err := b.Put([]byte(keyLastIncludedTerm), []byte(strconv.Itoa(lastIncludedTerm))); err != nil {
+			return err
+		}
+		if err := b.Put([]byte(keyLog), logBytes); err != nil {
+			return err
+		}
+		return b.Put([]byte(keySnapshot), kvSnapshot)
+	})
+}
+
+// Load reads back currentTerm, votedFor, log, lastIncludedIndex,
+// lastIncludedTerm, and the raw snapshot bytes (nil if no snapshot has
+// ever been taken). On a brand new file, every value comes back as the
+// same zero/empty state a fresh NewNode would use anyway — no separate
+// "first ever boot" case needed.
+func (s *Storage) Load() (currentTerm int, votedFor string, log []LogEntry, lastIncludedIndex int, lastIncludedTerm int, kvSnapshot []byte, err error) {
 	err = s.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(stateBucket)
 
@@ -86,12 +116,27 @@ func (s *Storage) Load() (currentTerm int, votedFor string, log []LogEntry, err 
 				return err
 			}
 		}
+		if v := b.Get([]byte(keyLastIncludedIndex)); v != nil {
+			lastIncludedIndex, err = strconv.Atoi(string(v))
+			if err != nil {
+				return err
+			}
+		}
+		if v := b.Get([]byte(keyLastIncludedTerm)); v != nil {
+			lastIncludedTerm, err = strconv.Atoi(string(v))
+			if err != nil {
+				return err
+			}
+		}
+		if v := b.Get([]byte(keySnapshot)); v != nil {
+			kvSnapshot = append([]byte(nil), v...) // bolt's v is only valid inside this transaction — copy it out
+		}
 		return nil
 	})
 	if log == nil {
 		log = []LogEntry{}
 	}
-	return currentTerm, votedFor, log, err
+	return currentTerm, votedFor, log, lastIncludedIndex, lastIncludedTerm, kvSnapshot, err
 }
 
 func (s *Storage) Close() error {

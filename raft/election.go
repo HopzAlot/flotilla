@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"encoding/json"
 	"log"
 	"math/rand"
 	"time"
@@ -181,6 +182,15 @@ func (s *Server) sendHeartbeats(term int) {
 		go func(peerID, addr string) {
 			s.node.mu.Lock()
 			prevLogIndex := s.nextIndex[peerID] - 1
+
+			// The entries this peer needs no longer exist anywhere in our
+			// log — only in the snapshot. termAtIndex would panic on a
+			// negative slice position if we tried the ordinary path here.
+			if prevLogIndex < s.node.lastIncludedIndex {
+				s.sendSnapshotTo(peerID, addr, term)
+				return
+			}
+
 			prevLogTerm := s.node.termAtIndex(prevLogIndex)
 			// Copy, not a reslice — s.node.log can be appended to by a
 			// concurrent Submit after we unlock, and we must not send (or
@@ -227,6 +237,56 @@ func (s *Server) sendHeartbeats(term int) {
 			}
 		}(peerID, addr)
 	}
+}
+
+// sendSnapshotTo sends the leader's current snapshot to a peer whose
+// nextIndex has fallen at or behind lastIncludedIndex. Called with n.mu
+// already held (same discipline as the AppendEntries path in
+// sendHeartbeats): captures what's needed, unlocks before the network
+// call, re-locks only to process the reply.
+func (s *Server) sendSnapshotTo(peerID, addr string, term int) {
+	lastIncludedIndex := s.node.lastIncludedIndex
+	lastIncludedTerm := s.node.lastIncludedTerm
+	kvBytes, err := json.Marshal(s.node.kv.Snapshot())
+	s.node.mu.Unlock()
+	if err != nil {
+		log.Printf("[%s] failed to serialize snapshot for %s: %v", s.node.id, peerID, err)
+		return
+	}
+
+	args := InstallSnapshotArgs{
+		Term:              term,
+		LeaderID:          s.node.id,
+		LastIncludedIndex: lastIncludedIndex,
+		LastIncludedTerm:  lastIncludedTerm,
+		Data:              kvBytes,
+	}
+	reply, err := s.sendInstallSnapshot(addr, args)
+	if err != nil {
+		return
+	}
+
+	s.node.mu.Lock()
+	defer s.node.mu.Unlock()
+	if reply.Term > s.node.currentTerm {
+		log.Printf("[%s] saw higher term %d in InstallSnapshot reply, stepping down", s.node.id, reply.Term)
+		s.node.currentTerm = reply.Term
+		s.node.state = Follower
+		s.node.votedFor = ""
+		return
+	}
+	if s.node.state != Leader || s.node.currentTerm != term {
+		return // stale reply, no longer leader of this term
+	}
+	// Guard against a delayed/stale reply regressing progress a later,
+	// faster AppendEntries round may have already advanced further.
+	if lastIncludedIndex+1 > s.nextIndex[peerID] {
+		s.nextIndex[peerID] = lastIncludedIndex + 1
+	}
+	if lastIncludedIndex > s.matchIndex[peerID] {
+		s.matchIndex[peerID] = lastIncludedIndex
+	}
+	s.advanceCommitIndex(term)
 }
 
 // advanceCommitIndex checks whether matchIndex now shows a majority

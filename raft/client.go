@@ -43,3 +43,18 @@ func (s *Server) sendAppendEntries(addr string, args AppendEntriesArgs) (AppendE
 	err = json.NewDecoder(resp.Body).Decode(&reply)
 	return reply, err
 }
+
+func (s *Server) sendInstallSnapshot(addr string, args InstallSnapshotArgs) (InstallSnapshotReply, error) {
+	var reply InstallSnapshotReply
+	body, err := json.Marshal(args)
+	if err != nil {
+		return reply, err
+	}
+	resp, err := rpcClient.Post(fmt.Sprintf("http://%s/installsnapshot", addr), "application/json", bytes.NewReader(body))
+	if err != nil {
+		return reply, err
+	}
+	defer resp.Body.Close()
+	err = json.NewDecoder(resp.Body).Decode(&reply)
+	return reply, err
+}

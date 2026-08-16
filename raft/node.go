@@ -1,9 +1,16 @@
 package raft
 
 import (
+	"encoding/json"
 	"log"
 	"sync"
 )
+
+// snapshotThreshold is how many log entries accumulate before the next
+// applyCommitted() call triggers a compaction. Real systems use numbers
+// in the thousands+; this is kept small so a snapshot can actually be
+// demoed without generating a huge batch of writes first.
+const snapshotThreshold = 10
 
 // NodeState is which of the three Raft roles this node currently plays.
 // Behavior for every RPC depends on this — a Follower and a Leader handle
@@ -85,20 +92,36 @@ type Node struct {
 // was — no node is trusted to resume as Leader just because it remembers
 // once being one; it has to win an election again like everyone else.
 func NewNode(id string, storage *Storage) *Node {
-	currentTerm, votedFor, storedLog, err := storage.Load()
+	currentTerm, votedFor, storedLog, lastIncludedIndex, lastIncludedTerm, snapshotBytes, err := storage.Load()
 	if err != nil {
 		log.Fatalf("[%s] failed to load persisted state: %v", id, err)
 	}
 
+	kv := NewKVStore()
+	if len(snapshotBytes) > 0 {
+		var data map[string]string
+		if err := json.Unmarshal(snapshotBytes, &data); err != nil {
+			log.Fatalf("[%s] failed to decode persisted snapshot: %v", id, err)
+		}
+		kv.Restore(data)
+	}
+
 	return &Node{
-		id:          id,
-		state:       Follower,
-		currentTerm: currentTerm,
-		votedFor:    votedFor,
-		log:         storedLog,
-		commitIndex: 0,
-		lastApplied: 0,
-		kv:          NewKVStore(),
+		id:                id,
+		state:             Follower,
+		currentTerm:       currentTerm,
+		votedFor:          votedFor,
+		log:               storedLog,
+		lastIncludedIndex: lastIncludedIndex,
+		lastIncludedTerm:  lastIncludedTerm,
+		// Anything folded into the snapshot was, by definition, already
+		// committed and applied — restoring these to 0 instead would let
+		// applyCommitted/advanceCommitIndex walk into indices the log no
+		// longer has (posForIndex would go negative), and would falsely
+		// re-litigate entries that are already durably settled.
+		commitIndex: lastIncludedIndex,
+		lastApplied: lastIncludedIndex,
+		kv:          kv,
 		storage:     storage,
 	}
 }
@@ -168,4 +191,35 @@ func (n *Node) applyCommitted() {
 		entry := n.log[n.posForIndex(n.lastApplied)]
 		n.kv.Apply(entry)
 	}
+	n.maybeSnapshot()
+}
+
+// maybeSnapshot takes a snapshot and discards the log entries it covers,
+// once the log has grown past snapshotThreshold. Callers must hold n.mu.
+// The boundary is always lastApplied, never commitIndex — the snapshot is
+// a copy of the KV map, which only reflects entries that have actually
+// been applied, not merely committed-but-not-yet-applied.
+func (n *Node) maybeSnapshot() {
+	if len(n.log) <= snapshotThreshold {
+		return
+	}
+
+	snapshotIndex := n.lastApplied
+	snapshotTerm := n.termAtIndex(snapshotIndex)                        // uses the OLD lastIncludedIndex
+	remainingLog := append([]LogEntry(nil), n.log[n.posForIndex(snapshotIndex+1):]...) // also OLD lastIncludedIndex
+
+	kvBytes, err := json.Marshal(n.kv.Snapshot())
+	if err != nil {
+		log.Printf("[%s] failed to serialize snapshot: %v", n.id, err)
+		return
+	}
+
+	n.lastIncludedIndex = snapshotIndex
+	n.lastIncludedTerm = snapshotTerm
+	n.log = remainingLog
+
+	if err := n.storage.SaveSnapshot(n.lastIncludedIndex, n.lastIncludedTerm, n.log, kvBytes); err != nil {
+		log.Printf("[%s] failed to persist snapshot: %v", n.id, err)
+	}
+	log.Printf("[%s] snapshot taken at index %d (term %d), log truncated to %d entries", n.id, snapshotIndex, snapshotTerm, len(n.log))
 }

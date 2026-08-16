@@ -39,3 +39,24 @@ func (kv *KVStore) Get(key string) (string, bool) {
 	val, ok := kv.data[key]
 	return val, ok
 }
+
+// Snapshot returns a copy of the current map, safe to serialize — never
+// the live map itself, so a concurrent Apply can't racily mutate whatever
+// this copy gets handed to (e.g. json.Marshal running outside kv.mu).
+func (kv *KVStore) Snapshot() map[string]string {
+	kv.mu.RLock()
+	defer kv.mu.RUnlock()
+	data := make(map[string]string, len(kv.data))
+	for k, v := range kv.data {
+		data[k] = v
+	}
+	return data
+}
+
+// Restore replaces the entire map wholesale — used only when booting from
+// a persisted snapshot, never during normal Apply-driven operation.
+func (kv *KVStore) Restore(data map[string]string) {
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	kv.data = data
+}

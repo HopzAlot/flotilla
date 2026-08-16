@@ -10,7 +10,6 @@ import (
 // over the network, plus the peer addresses it needs to reach them back.
 type Server struct {
 	node    *Node
-	//step 7
 	peers   map[string]string // peer id -> HTTP address, excludes self
 	resetCh chan struct{}
 

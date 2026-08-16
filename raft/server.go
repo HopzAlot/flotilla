@@ -259,15 +259,39 @@ func (s *Server) handleInstallSnapshot(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(reply)
 }
 
-// handleDebugGet is a raw, unguarded peek at this node's own local state
-// machine — NOT the real client read path. It can return stale data on a
-// lagging follower, or even on a leader that's been silently partitioned
-// away. Making reads actually safe is Step 7.5's job; this exists only so
-// Step 5's apply logic can be observed while it's being built.
+// GetReply mirrors SubmitReply's shape for the same reason: a client
+// pointed at the wrong node needs an address to retry against, not just a
+// bare failure.
+type GetReply struct {
+	Success    bool
+	Value      string
+	Found      bool
+	LeaderAddr string
+}
+
+// handleDebugGet is the linearizable client read path (Step 7.5). Unlike a
+// write, a read never touches the log — but it still must not answer from
+// a leader that only *thinks* it's still leader. confirmLeadership proves
+// a live majority still acks this node/term right now before anything is
+// read; waitForApply then ensures this node's own kv actually reflects
+// everything up through that proof point. Only after both does kv.Get run.
 func (s *Server) handleDebugGet(w http.ResponseWriter, r *http.Request) {
 	key := r.URL.Query().Get("key")
-	val, ok := s.node.kv.Get(key)
-	json.NewEncoder(w).Encode(map[string]any{"value": val, "found": ok})
+
+	readIndex, ok := s.confirmLeadership()
+	if !ok {
+		s.node.mu.Lock()
+		leaderAddr := s.peers[s.node.leaderID]
+		s.node.mu.Unlock()
+		log.Printf("[%s] Get %q -> rejected: not leader (leaderAddr=%q)", s.node.id, key, leaderAddr)
+		json.NewEncoder(w).Encode(GetReply{Success: false, LeaderAddr: leaderAddr})
+		return
+	}
+
+	s.waitForApply(readIndex)
+
+	val, found := s.node.kv.Get(key)
+	json.NewEncoder(w).Encode(GetReply{Success: true, Value: val, Found: found})
 }
 
 // Run starts both the election-timeout goroutine and the HTTP server.

@@ -1,5 +1,12 @@
 package raft
 
+import "time"
+
+// readApplyPollInterval is how often waitForApply rechecks lastApplied.
+// Kept short since, per the invariant traced in node.go, this almost never
+// actually loops more than once.
+const readApplyPollInterval = 2 * time.Millisecond
+
 // confirmLeadership proves this node is still leader of a live majority
 // right this instant, by sending one round of empty AppendEntries (a plain
 // heartbeat) and waiting for acks. What proves leadership is NOT
@@ -88,4 +95,24 @@ func (s *Server) confirmLeadership() (readIndex int, ok bool) {
 		}
 	}
 	return 0, false
+}
+
+// waitForApply blocks until lastApplied has reached index, so that a
+// kv.Get performed right after this returns is guaranteed to reflect
+// everything committed up through index. Not waiting on anything that
+// hasn't happened yet — index was already <= commitIndex at the moment
+// confirmLeadership captured it, and applyCommitted() is what always
+// drives lastApplied up to match commitIndex (see node.go). In this
+// codebase that catch-up already happened synchronously before this is
+// even called, so this loop runs its check exactly once and returns.
+func (s *Server) waitForApply(index int) {
+	for {
+		s.node.mu.Lock()
+		caughtUp := s.node.lastApplied >= index
+		s.node.mu.Unlock()
+		if caughtUp {
+			return
+		}
+		time.Sleep(readApplyPollInterval)
+	}
 }

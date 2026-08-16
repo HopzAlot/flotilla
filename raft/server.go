@@ -10,6 +10,7 @@ import (
 // over the network, plus the peer addresses it needs to reach them back.
 type Server struct {
 	node    *Node
+	//step 7
 	peers   map[string]string // peer id -> HTTP address, excludes self
 	resetCh chan struct{}
 
@@ -148,14 +149,16 @@ func (s *Server) handleAppendEntries(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(reply)
 }
 
-// SubmitReply tells a client whether its command was accepted. LeaderHint
-// is only a best-known guess — it's the last leaderID this node observed,
-// so it can be empty (this node has never seen a leader) or stale (that
-// node has since crashed or lost an election). Good enough to retry with,
-// never something to trust blindly.
+// SubmitReply tells a client whether its command was accepted. LeaderAddr
+// is only a best-known guess — the network address of the last leaderID
+// this node observed, translated from Raft id to something a client can
+// actually reach (peers only ever stores id->addr, never anything a
+// client understands on its own). Can be empty (this node has never seen
+// a leader) or stale (that node has since crashed or lost an election).
+// Good enough to retry with, never something to trust blindly.
 type SubmitReply struct {
 	Success    bool
-	LeaderHint string
+	LeaderAddr string
 }
 
 // handleSubmit is how a client actually gets a command into the cluster.
@@ -171,10 +174,10 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 
 	s.node.mu.Lock()
 	if s.node.state != Leader {
-		hint := s.node.leaderID
+		leaderAddr := s.peers[s.node.leaderID] // "" if leaderID is "" or otherwise unknown
 		s.node.mu.Unlock()
-		log.Printf("[%s] Submit %+v -> rejected: not leader (hint=%q)", s.node.id, cmd, hint)
-		json.NewEncoder(w).Encode(SubmitReply{Success: false, LeaderHint: hint})
+		log.Printf("[%s] Submit %+v -> rejected: not leader (leaderAddr=%q)", s.node.id, cmd, leaderAddr)
+		json.NewEncoder(w).Encode(SubmitReply{Success: false, LeaderAddr: leaderAddr})
 		return
 	}
 

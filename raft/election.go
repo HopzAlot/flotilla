@@ -219,6 +219,9 @@ func (s *Server) sendHeartbeats(term int) {
 				s.node.currentTerm = reply.Term
 				s.node.state = Follower
 				s.node.votedFor = ""
+				if reply.LeaderHint != "" {
+					s.node.leaderID = reply.LeaderHint
+				}
 				return
 			}
 			if s.node.state != Leader || s.node.currentTerm != term {

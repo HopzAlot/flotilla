@@ -153,6 +153,17 @@ func (n *Node) lastLogInfo() (index, term int) {
 	return last.Index, last.Term
 }
 
+// currentLeaderHint returns this node's own best current belief of who's
+// leader: itself, if it is one, or whatever it last learned via leaderID
+// otherwise (possibly "" if it's never accepted a call from any leader).
+// Callers must hold n.mu.
+func (n *Node) currentLeaderHint() string {
+	if n.state == Leader {
+		return n.id
+	}
+	return n.leaderID
+}
+
 // posForIndex converts a Raft log index into a position in n.log. Only
 // valid for index > n.lastIncludedIndex — anything at or before that
 // boundary has no position in n.log at all (see termAtIndex). Callers

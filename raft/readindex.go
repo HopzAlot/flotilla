@@ -75,6 +75,9 @@ func (s *Server) confirmLeadership() (readIndex int, ok bool) {
 				s.node.currentTerm = reply.Term
 				s.node.state = Follower
 				s.node.votedFor = ""
+				if reply.LeaderHint != "" {
+					s.node.leaderID = reply.LeaderHint
+				}
 				s.node.persist()
 			}
 			stillLeader := s.node.state == Leader && s.node.currentTerm == term

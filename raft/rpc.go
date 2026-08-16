@@ -34,6 +34,14 @@ type AppendEntriesArgs struct {
 type AppendEntriesReply struct {
 	Term    int
 	Success bool
+
+	// LeaderHint is only meaningful when this reply is a stale-term
+	// rejection (Term > the caller's own term, Success false because the
+	// caller never even got past the term check). It's the responder's
+	// own best current belief of who's leader — itself, if it is one, or
+	// whatever it last learned via its own leaderID otherwise. Lets a
+	// rejected caller redirect a client without needing a separate RPC.
+	LeaderHint string
 }
 
 // InstallSnapshotArgs is sent by the leader when a peer's nextIndex has

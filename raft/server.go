@@ -85,8 +85,8 @@ func (s *Server) handleAppendEntries(w http.ResponseWriter, r *http.Request) {
 	defer s.node.mu.Unlock()
 
 	if args.Term < s.node.currentTerm {
-		reply := AppendEntriesReply{Term: s.node.currentTerm, Success: false}
-		log.Printf("[%s] AppendEntries from %s (term=%d) -> rejected: stale term", s.node.id, args.LeaderID, args.Term)
+		reply := AppendEntriesReply{Term: s.node.currentTerm, Success: false, LeaderHint: s.node.currentLeaderHint()}
+		log.Printf("[%s] AppendEntries from %s (term=%d) -> rejected: stale term, hint=%q", s.node.id, args.LeaderID, args.Term, reply.LeaderHint)
 		json.NewEncoder(w).Encode(reply)
 		return
 	}

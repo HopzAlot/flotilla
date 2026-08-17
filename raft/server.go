@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 )
 
 // Server wraps a Node with an HTTP transport so other nodes can reach it
@@ -164,6 +165,11 @@ type SubmitReply struct {
 // Only the leader may append to its own log here — every other node
 // rejects outright rather than forwarding, so the client is the one doing
 // the retry, not some hidden hop-through-the-cluster relay.
+//
+// Success:true is a durability promise: it's only sent once the entry is
+// actually committed (replicated to a majority), never merely appended to
+// this node's own log. An entry that's only local disappears with this
+// process if it crashes before replicating — see waitForCommit.
 func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	var cmd Command
 	if err := json.NewDecoder(r.Body).Decode(&cmd); err != nil {
@@ -184,10 +190,47 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	entry := LogEntry{Term: s.node.currentTerm, Index: lastLogIndex + 1, Command: cmd}
 	s.node.log = append(s.node.log, entry)
 	s.node.persist()
+	term := s.node.currentTerm
+	index := entry.Index
 	s.node.mu.Unlock()
 
-	log.Printf("[%s] Submit %+v -> appended at index %d", s.node.id, cmd, entry.Index)
+	log.Printf("[%s] Submit %+v -> appended at index %d, waiting for commit", s.node.id, cmd, index)
+
+	if !s.waitForCommit(index, term) {
+		s.node.mu.Lock()
+		leaderAddr := s.peers[s.node.leaderID]
+		s.node.mu.Unlock()
+		log.Printf("[%s] Submit %+v -> lost leadership before commit (leaderAddr=%q)", s.node.id, cmd, leaderAddr)
+		json.NewEncoder(w).Encode(SubmitReply{Success: false, LeaderAddr: leaderAddr})
+		return
+	}
+
+	log.Printf("[%s] Submit %+v -> committed at index %d", s.node.id, cmd, index)
 	json.NewEncoder(w).Encode(SubmitReply{Success: true})
+}
+
+// waitForCommit blocks until the entry this node appended at index, back
+// when it was leader of term, is either committed or provably never will
+// be under this leadership. Checking currentTerm alongside commitIndex is
+// what makes this safe: term only ever increases, and a node can never
+// become leader again under a term it already left — so the instant
+// currentTerm != term, this specific write's fate is sealed as "not
+// committed by me," permanently, even if commitIndex later races ahead
+// for unrelated reasons (a different leader, a different entry).
+func (s *Server) waitForCommit(index, term int) bool {
+	for {
+		s.node.mu.Lock()
+		if s.node.state != Leader || s.node.currentTerm != term {
+			s.node.mu.Unlock()
+			return false
+		}
+		if s.node.commitIndex >= index {
+			s.node.mu.Unlock()
+			return true
+		}
+		s.node.mu.Unlock()
+		time.Sleep(readApplyPollInterval)
+	}
 }
 
 // handleInstallSnapshot receives a leader's snapshot when this node has

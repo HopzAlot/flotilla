@@ -1,2 +1,5 @@
 chaos-run/
+orchestrator-run/
 *.db
+web/node_modules/
+web/dist/

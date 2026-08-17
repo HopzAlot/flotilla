@@ -19,6 +19,21 @@ the actual differentiation point of this repo:
   the ReadIndex protocol so a read is provably as fresh as the cluster's
   most recent committed write.
 
+## Live dashboard
+
+```bash
+./scripts/dashboard.sh
+```
+
+then open **http://localhost:5173**. This launches a real 3-node fleet
+(actual `flotillanode` OS processes, not a simulation) behind a small Go
+control-plane (`cmd/orchestrator`) and a React dashboard: watch the
+Captain get elected, submit cargo (writes) and fetch treasure
+(linearizable reads), and sink a ship mid-flight to watch the fleet
+re-elect a new Captain — or, sink two out of three and watch it correctly
+refuse to elect anyone at all, no matter how many terms it burns through,
+because a lone ship can never prove it speaks for a majority.
+
 ## Architecture
 
 ```

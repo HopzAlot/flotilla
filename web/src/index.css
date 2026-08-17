@@ -1,0 +1,97 @@
+@import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+/* Bridge-console theme: a night-watch sonar screen, committed on purpose —
+   this isn't going through the Artifacts viewer's theme system, so one
+   deliberate dark world beats a half-hearted light variant nobody asked for. */
+:root {
+  --bg: #0a1420;
+  --bg-deep: #060d16;
+  --surface: #101f33;
+  --surface-2: #16283f;
+  --border: rgba(232, 240, 252, 0.09);
+  --border-strong: rgba(232, 240, 252, 0.18);
+
+  --ink: #eef3fa;
+  --ink-dim: #8ea3c2;
+  --ink-faint: #5c7192;
+
+  --accent: #e8b23d;       /* brass — the Captain's color */
+  --accent-ink: #2b1a00;
+  --success: #4fd1ae;      /* sea-foam — confirmed / delivered */
+  --danger: #ef6461;       /* signal red — sunk */
+  --mutiny: #b47eea;       /* violet — candidate / term churn */
+
+  --font-display: 'Big Shoulders Display', sans-serif;
+  --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --radius: 10px;
+  --radius-lg: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(232, 178, 61, 0.08), transparent),
+    radial-gradient(ellipse 60% 40% at 90% 100%, rgba(180, 126, 234, 0.06), transparent);
+  color: var(--ink);
+  font-family: var(--font-body);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  text-wrap: balance;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+  color: var(--ink-dim);
+  line-height: 1.55;
+}
+
+button {
+  font-family: var(--font-body);
+  cursor: pointer;
+}
+
+input, select {
+  font-family: var(--font-mono);
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

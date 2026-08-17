@@ -337,6 +337,35 @@ func (s *Server) handleDebugGet(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(GetReply{Success: true, Value: val, Found: found})
 }
 
+// StatusReply is pure observability — a snapshot of this node's own view
+// of itself, for a dashboard or operator to poll. Never consulted by any
+// other node or by consensus logic itself; nothing here is safety-critical.
+type StatusReply struct {
+	ID          string
+	State       string
+	Term        int
+	CommitIndex int
+	LastApplied int
+	LogLength   int
+	LeaderID    string
+}
+
+func (s *Server) handleDebugStatus(w http.ResponseWriter, r *http.Request) {
+	s.node.mu.Lock()
+	lastLogIndex, _ := s.node.lastLogInfo()
+	reply := StatusReply{
+		ID:          s.node.id,
+		State:       s.node.state.String(),
+		Term:        s.node.currentTerm,
+		CommitIndex: s.node.commitIndex,
+		LastApplied: s.node.lastApplied,
+		LogLength:   lastLogIndex,
+		LeaderID:    s.node.currentLeaderHint(),
+	}
+	s.node.mu.Unlock()
+	json.NewEncoder(w).Encode(reply)
+}
+
 // Run starts both the election-timeout goroutine and the HTTP server.
 // ListenAndServe blocks, so the timer has to be started first.
 func (s *Server) Run(addr string) error {
@@ -348,6 +377,7 @@ func (s *Server) Run(addr string) error {
 	mux.HandleFunc("/installsnapshot", s.handleInstallSnapshot)
 	mux.HandleFunc("/submit", s.handleSubmit)
 	mux.HandleFunc("/debug/get", s.handleDebugGet)
+	mux.HandleFunc("/debug/status", s.handleDebugStatus)
 	log.Printf("[%s] listening on %s", s.node.id, addr)
 	return http.ListenAndServe(addr, mux)
 }

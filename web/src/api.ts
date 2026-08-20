@@ -24,6 +24,10 @@ export async function startNode(id: string): Promise<void> {
   await fetch(`${API_BASE}/api/nodes/${id}/start`, { method: 'POST' })
 }
 
+export async function resetFleet(): Promise<void> {
+  await fetch(`${API_BASE}/api/reset`, { method: 'POST' })
+}
+
 export async function submit(
   id: string,
   op: 'PUT' | 'DELETE',

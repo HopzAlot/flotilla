@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import './App.css'
 import './styles/shared.css'
-import { killNode, startNode } from './api'
+import { killNode, resetFleet, startNode } from './api'
 import { useFleetStream } from './hooks/useFleetStream'
 import ShipCard from './components/ShipCard'
 import CargoPanel from './components/CargoPanel'
@@ -26,6 +26,21 @@ function App() {
     setBusy(true)
     try {
       await startNode(id)
+    } finally {
+      setBusy(false)
+    }
+  }
+  async function handleReset() {
+    if (
+      !window.confirm(
+        "Regroup the fleet? This wipes every ship's log and cargo and resets every watch back to 1, not just a display tweak.",
+      )
+    ) {
+      return
+    }
+    setBusy(true)
+    try {
+      await resetFleet()
     } finally {
       setBusy(false)
     }
@@ -60,6 +75,9 @@ function App() {
           ) : (
             <span className="pill pill--candidate">No Captain, the sea decides</span>
           )}
+          <button className="btn btn--link app__reset" disabled={busy} onClick={handleReset}>
+            ⚓ Regroup the fleet
+          </button>
         </div>
       </header>
 

@@ -4,17 +4,38 @@ import (
 	"encoding/json"
 	"log"
 	"math/rand"
+	"os"
+	"strconv"
 	"time"
 )
 
-const (
-	electionTimeoutMin = 150 * time.Millisecond
-	electionTimeoutMax = 300 * time.Millisecond
-	heartbeatInterval  = 50 * time.Millisecond
+// These default to values tuned for localhost, where inter-process
+// latency is near-zero. A deployed instance on shared/throttled CPU
+// (e.g. Render's free tier, especially with a big fleet all competing
+// for the same core) can see real heartbeats delayed past 150-300ms
+// even though the leader never actually died, a follower has no way to
+// tell "leader is slow" from "leader is dead," so it calls a spurious
+// election. Override via env vars to give such a deployment more slack
+// without touching the fast local-dev defaults.
+var (
+	electionTimeoutMin = envDurationMS("RAFT_ELECTION_TIMEOUT_MIN_MS", 150*time.Millisecond)
+	electionTimeoutMax = envDurationMS("RAFT_ELECTION_TIMEOUT_MAX_MS", 300*time.Millisecond)
+	heartbeatInterval  = envDurationMS("RAFT_HEARTBEAT_INTERVAL_MS", 50*time.Millisecond)
 )
+
+func envDurationMS(key string, fallback time.Duration) time.Duration {
+	ms, err := strconv.Atoi(os.Getenv(key))
+	if err != nil || ms <= 0 {
+		return fallback
+	}
+	return time.Duration(ms) * time.Millisecond
+}
 
 func randomElectionTimeout() time.Duration {
 	span := electionTimeoutMax - electionTimeoutMin
+	if span <= 0 {
+		return electionTimeoutMin
+	}
 	return electionTimeoutMin + time.Duration(rand.Int63n(int64(span)))
 }
 

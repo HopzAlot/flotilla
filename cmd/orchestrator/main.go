@@ -274,6 +274,44 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]bool{"ok": true})
 }
 
+// handleReset is the closest thing to a "reset term" button that's
+// actually safe: term is persisted to disk alongside the committed log
+// and votedFor (see raft.Storage), there's no way to zero just the term
+// without risking the one-vote-per-term safety guarantee. So this kills
+// every ship, deletes every node's on-disk state, and relaunches the
+// whole fleet fresh, a real coordinated restart, not a partial edit. It
+// deliberately also wipes committed cargo; there's no other honest way
+// to make the term number small again.
+func handleReset(w http.ResponseWriter, r *http.Request) {
+	procMu.Lock()
+	for id, cmd := range procs {
+		if cmd.Process != nil && cmd.ProcessState == nil {
+			cmd.Process.Kill()
+		}
+		delete(procs, id)
+	}
+	procMu.Unlock()
+
+	time.Sleep(300 * time.Millisecond) // let the OS actually reclaim the old ports/db files
+
+	for _, n := range nodes {
+		os.Remove(filepath.Join(runDir, n.ID+".db"))
+	}
+
+	statusMu.Lock()
+	latestStatus = map[string]nodeStatus{}
+	statusMu.Unlock()
+
+	for _, n := range nodes {
+		if err := startNode(n.ID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	emit("⚓ The fleet regroups at port. Every watch resets to one, every hold emptied.")
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
 func handleSubmitProxy(w http.ResponseWriter, r *http.Request) {
 	id := nodeIDFromPath("/api/nodes/", strings.TrimSuffix(r.URL.Path, "/submit"))
 	var addr string
@@ -373,6 +411,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/nodes", handleNodes)
 	mux.HandleFunc("/api/events", handleEvents)
+	mux.HandleFunc("/api/reset", handleReset)
 	mux.HandleFunc("/api/nodes/", func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/kill"):

@@ -112,3 +112,9 @@
   font-family: var(--font-mono);
   color: var(--ink-dim);
 }
+
+.app__copyright {
+  margin-top: 6px;
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+}

@@ -10,7 +10,7 @@ const ROLE_LABEL: Record<string, string> = {
 
 const ROLE_GLYPH: Record<string, string> = {
   Leader: '⛵',
-  Follower: '🚣',
+  Follower: '🛥️',
   Candidate: '🏴',
 }
 

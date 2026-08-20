@@ -6,6 +6,7 @@ import { useFleetStream } from './hooks/useFleetStream'
 import ShipCard from './components/ShipCard'
 import CargoPanel from './components/CargoPanel'
 import TreasurePanel from './components/TreasurePanel'
+import AboutPanel from './components/AboutPanel'
 import ShipsLog from './components/ShipsLog'
 import Waterline from './components/Waterline'
 
@@ -80,10 +81,10 @@ function App() {
         <ShipsLog events={events} />
       </main>
 
+      <AboutPanel />
+
       <footer className="app__footer">
-        <p>
-          Real Go processes, real <code>kill -9</code>, real elections. No mocks below deck.
-        </p>
+        <p className="app__copyright">© 2026 HopzAlot. All rights reserved, all ships expendable.</p>
       </footer>
     </div>
   )

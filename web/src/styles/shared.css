@@ -1,0 +1,168 @@
+/* Design-system primitives shared across components: pills, buttons,
+   the panel shell, and result banners. Imported by every component that
+   uses these classes, Vite/ESM dedupes the module so it only ships once. */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  color: var(--ink-dim);
+  background: var(--surface-2);
+}
+
+.pill--leader {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.pill--follower {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+.pill--candidate {
+  color: #2a1533;
+  background: var(--mutiny);
+  border-color: var(--mutiny);
+}
+.pill--sunk {
+  color: var(--ink-faint);
+  background: transparent;
+  text-decoration: line-through;
+}
+
+.btn {
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--ink);
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: filter 0.15s ease, transform 0.1s ease;
+}
+
+.btn:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn--accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.btn--danger {
+  background: color-mix(in srgb, var(--danger) 18%, var(--surface));
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--border-strong));
+  color: var(--danger);
+}
+.btn--success {
+  background: color-mix(in srgb, var(--success) 18%, var(--surface));
+  border-color: color-mix(in srgb, var(--success) 50%, var(--border-strong));
+  color: var(--success);
+}
+.btn--link {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+  /* four brass rivets, hull plating, not a generic card */
+  background-image:
+    radial-gradient(circle 2.5px at 14px 14px, var(--border-strong) 55%, transparent 58%),
+    radial-gradient(circle 2.5px at calc(100% - 14px) 14px, var(--border-strong) 55%, transparent 58%),
+    radial-gradient(circle 2.5px at 14px calc(100% - 14px), var(--border-strong) 55%, transparent 58%),
+    radial-gradient(circle 2.5px at calc(100% - 14px) calc(100% - 14px), var(--border-strong) 55%, transparent 58%);
+}
+
+.panel__title {
+  font-size: 1.4rem;
+  color: var(--ink);
+}
+
+.panel__sub {
+  font-size: 0.85rem;
+}
+
+.panel__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.panel__label {
+  font-size: 0.75rem;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.panel input,
+.panel select {
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--ink);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  min-width: 0;
+}
+
+.panel input {
+  flex: 1;
+  min-width: 90px;
+}
+
+.panel input:focus-visible,
+.panel select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.result {
+  font-size: 0.88rem;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+}
+
+.result--ok {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border-strong));
+  color: var(--success);
+}
+.result--warn {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-strong));
+  color: var(--accent);
+}

@@ -1,0 +1,40 @@
+.panel--log {
+  max-height: 480px;
+}
+
+.log {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+  overflow-y: auto;
+  font-size: 0.82rem;
+  padding-right: 4px;
+}
+
+.log__empty {
+  font-style: italic;
+  font-size: 0.85rem;
+}
+
+.log__line {
+  display: flex;
+  gap: 10px;
+  padding: 6px 4px;
+  border-bottom: 1px dashed var(--border);
+  animation: slide-in 0.3s ease both;
+}
+
+.log__time {
+  color: var(--ink-faint);
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.log__msg {
+  color: var(--ink-dim);
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: translateX(0); }
+}

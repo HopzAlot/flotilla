@@ -1,3 +1,5 @@
+import './ShipsLog.css'
+import '../styles/shared.css'
 import type { FleetEvent } from '../types'
 
 function timeLabel(ts: number): string {

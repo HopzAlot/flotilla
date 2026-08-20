@@ -1,3 +1,5 @@
+import './ShipCard.css'
+import '../styles/shared.css'
 import type { NodeStatus } from '../types'
 
 const ROLE_LABEL: Record<string, string> = {
@@ -32,6 +34,12 @@ export default function ShipCard({ node, onKill, onStart, busy }: Props) {
       <div className="ship-card__body">
         <div className="ship-card__head">
           <h3 className="ship-card__id">{node.id}</h3>
+          {node.alive && (
+            <div className="ship-card__seal mono" title="Current term: the watch this ship is standing">
+              <span className="ship-card__seal-label">watch</span>
+              <span className="ship-card__seal-num">{node.term}</span>
+            </div>
+          )}
           <span className={`pill pill--${roleClass}`}>
             {node.alive ? ROLE_LABEL[role] ?? role : 'Sunk'}
           </span>
@@ -40,10 +48,6 @@ export default function ShipCard({ node, onKill, onStart, busy }: Props) {
 
         {node.alive ? (
           <dl className="ship-card__stats mono">
-            <div>
-              <dt>term</dt>
-              <dd>{node.term}</dd>
-            </div>
             <div>
               <dt>commit</dt>
               <dd>{node.commitIndex}</dd>
@@ -58,7 +62,7 @@ export default function ShipCard({ node, onKill, onStart, busy }: Props) {
             </div>
           </dl>
         ) : (
-          <p className="ship-card__epitaph">Resting on the seabed. No cargo lost — only what was never confirmed.</p>
+          <p className="ship-card__epitaph">Resting on the seabed. No cargo lost, only what was never confirmed.</p>
         )}
 
         <button

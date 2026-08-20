@@ -1,51 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import './App.css'
-import { fetchEvents, fetchNodes, killNode, startNode } from './api'
+import './styles/shared.css'
+import { killNode, startNode } from './api'
+import { useFleetStream } from './hooks/useFleetStream'
 import ShipCard from './components/ShipCard'
 import CargoPanel from './components/CargoPanel'
 import TreasurePanel from './components/TreasurePanel'
 import ShipsLog from './components/ShipsLog'
-import type { FleetEvent, NodeStatus } from './types'
+import Waterline from './components/Waterline'
 
 function App() {
-  const [nodes, setNodes] = useState<NodeStatus[]>([])
-  const [events, setEvents] = useState<FleetEvent[]>([])
+  const { nodes, events } = useFleetStream()
   const [busy, setBusy] = useState(false)
-  const lastSeq = useRef(0)
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function pollNodes() {
-      try {
-        const n = await fetchNodes()
-        if (!cancelled) setNodes(n)
-      } catch {
-        /* orchestrator not reachable yet — just retry next tick */
-      }
-    }
-    async function pollEvents() {
-      try {
-        const fresh = await fetchEvents(lastSeq.current)
-        if (fresh.length && !cancelled) {
-          lastSeq.current = fresh[fresh.length - 1].seq
-          setEvents((prev) => [...prev, ...fresh].slice(-60))
-        }
-      } catch {
-        /* same */
-      }
-    }
-
-    pollNodes()
-    pollEvents()
-    const t1 = setInterval(pollNodes, 500)
-    const t2 = setInterval(pollEvents, 700)
-    return () => {
-      cancelled = true
-      clearInterval(t1)
-      clearInterval(t2)
-    }
-  }, [])
 
   async function handleKill(id: string) {
     setBusy(true)
@@ -70,6 +36,19 @@ function App() {
   return (
     <div className="app">
       <header className="app__header">
+        <svg className="compass-rose" viewBox="0 0 100 100" aria-hidden="true">
+          <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" strokeWidth="0.75" />
+          <circle cx="50" cy="50" r="2.5" fill="currentColor" />
+          <g stroke="currentColor" strokeWidth="1">
+            <line x1="50" y1="4" x2="50" y2="96" />
+            <line x1="4" y1="50" x2="96" y2="50" />
+          </g>
+          <g stroke="currentColor" strokeWidth="0.5">
+            <line x1="15.5" y1="15.5" x2="84.5" y2="84.5" />
+            <line x1="15.5" y1="84.5" x2="84.5" y2="15.5" />
+          </g>
+          <path d="M50 4 L45 30 L50 22 L55 30 Z" fill="currentColor" />
+        </svg>
         <h1>⛵ Flotilla</h1>
         <p className="app__tagline">
           A Raft cluster you can actually sink. Watch consensus survive it anyway.
@@ -78,16 +57,19 @@ function App() {
           {captain ? (
             <span className="pill pill--leader">Captain: {captain.id}</span>
           ) : (
-            <span className="pill pill--candidate">No Captain — the sea decides</span>
+            <span className="pill pill--candidate">No Captain, the sea decides</span>
           )}
         </div>
       </header>
 
-      <section className="fleet">
-        {nodes.map((n) => (
-          <ShipCard key={n.id} node={n} onKill={handleKill} onStart={handleStart} busy={busy} />
-        ))}
-        {nodes.length === 0 && <p className="fleet__loading">Launching the fleet…</p>}
+      <section className="fleet-deck">
+        <div className="fleet">
+          {nodes.map((n) => (
+            <ShipCard key={n.id} node={n} onKill={handleKill} onStart={handleStart} busy={busy} />
+          ))}
+          {nodes.length === 0 && <p className="fleet__loading">Launching the fleet…</p>}
+        </div>
+        <Waterline />
       </section>
 
       <main className="app__main">

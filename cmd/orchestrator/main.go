@@ -195,7 +195,7 @@ func pollLoop() {
 func diffEvents(old, fresh nodeStatus) {
 	switch {
 	case old.Alive && !fresh.Alive:
-		emit("A cannon finds its mark — %s sinks beneath the waves.", fresh.ID)
+		emit("A cannon finds its mark. %s sinks beneath the waves.", fresh.ID)
 	case !old.Alive && fresh.Alive:
 		emit("%s rises from the depths, timbers creaking, ready to sail again.", fresh.ID)
 	}
@@ -203,7 +203,7 @@ func diffEvents(old, fresh nodeStatus) {
 		emit("%s takes the helm as Captain of term %d.", fresh.ID, fresh.Term)
 	}
 	if fresh.Alive && old.Alive && fresh.Term > old.Term && fresh.State != "Leader" {
-		emit("Mutiny in the ranks — %s's clock advances to term %d.", fresh.ID, fresh.Term)
+		emit("Mutiny in the ranks. %s's clock advances to term %d.", fresh.ID, fresh.Term)
 	}
 }
 
@@ -294,9 +294,9 @@ func handleSubmitProxy(w http.ResponseWriter, r *http.Request) {
 	if reply.Success {
 		switch cmd.Op {
 		case "DELETE":
-			emit("%s heaves \"%s\" overboard — the fleet confirms it's gone.", id, cmd.Key)
+			emit("%s heaves \"%s\" overboard, the fleet confirms it's gone.", id, cmd.Key)
 		default:
-			emit("📦 %s stows \"%s\" = \"%s\" in the hold — confirmed by a majority.", id, cmd.Key, cmd.Value)
+			emit("📦 %s stows \"%s\" = \"%s\" in the hold, confirmed by a majority.", id, cmd.Key, cmd.Value)
 		}
 	}
 
@@ -358,7 +358,7 @@ func main() {
 			log.Fatalf("failed to start %s: %v", n.ID, err)
 		}
 	}
-	emit("The fleet sets sail — three ships launched, awaiting a Captain.")
+	emit("The fleet sets sail. Three ships launched, awaiting a Captain.")
 
 	go pollLoop()
 

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import '../styles/shared.css'
 import { get } from '../api'
 import { KNOWN_NODES, idForAddr } from '../types'
 import type { GetReply } from '../types'
@@ -31,7 +32,7 @@ export default function TreasurePanel({ aliveIds }: Props) {
     <section className="panel">
       <h2 className="panel__title">🔭 Fetch Treasure</h2>
       <p className="panel__sub">
-        A linearizable read: the ship must prove — right now — it still commands a majority before it answers.
+        A linearizable read: the ship must prove, right now, it still commands a majority before it answers.
       </p>
 
       <div className="panel__row">
@@ -52,7 +53,7 @@ export default function TreasurePanel({ aliveIds }: Props) {
       {result && (
         <div className={`result ${result.Success && result.Found ? 'result--ok' : result.Success ? 'result--warn' : 'result--warn'}`}>
           {result.Error ? (
-            <>🌊 Couldn't reach that ship — try another.</>
+            <>🌊 Couldn't reach that ship. Try another.</>
           ) : result.Success && result.Found ? (
             <>
               💰 <strong>{key}</strong> = <span className="mono">{result.Value}</span>

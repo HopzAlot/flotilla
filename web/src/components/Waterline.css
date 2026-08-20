@@ -1,0 +1,23 @@
+.waterline {
+  height: 30px;
+  overflow: hidden;
+  margin-top: -6px;
+}
+
+.waterline__track {
+  display: flex;
+  width: 200%;
+  height: 100%;
+  animation: waterline-drift 14s linear infinite;
+}
+
+.waterline__track svg {
+  width: 50%;
+  height: 100%;
+  flex-shrink: 0;
+}
+
+@keyframes waterline-drift {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}

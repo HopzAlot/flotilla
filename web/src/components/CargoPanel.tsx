@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import '../styles/shared.css'
 import { submit } from '../api'
 import { KNOWN_NODES, idForAddr } from '../types'
 import type { SubmitReply } from '../types'
@@ -62,12 +63,12 @@ export default function CargoPanel({ aliveIds }: Props) {
       {result && (
         <div className={`result ${result.Success ? 'result--ok' : 'result--warn'}`}>
           {result.Success ? (
-            <>✅ Cargo confirmed by the fleet — safe in the hold.</>
+            <>✅ Cargo confirmed by the fleet, safe in the hold.</>
           ) : result.Error ? (
-            <>🌊 Couldn't reach that ship — try another.</>
+            <>🌊 Couldn't reach that ship. Try another.</>
           ) : (
             <>
-              🧭 Wrong ship — {target} isn't Captain.{' '}
+              🧭 Wrong ship. {target} isn't Captain.{' '}
               {redirectId ? (
                 <button className="btn btn--link" onClick={() => send(redirectId)}>
                   Follow to {redirectId} →

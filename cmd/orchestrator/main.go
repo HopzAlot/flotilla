@@ -26,11 +26,19 @@ type nodeConfig struct {
 	Addr string // ":8001", what the node itself binds to
 }
 
-var nodes = []nodeConfig{
-	{"node1", ":8001"},
-	{"node2", ":8002"},
-	{"node3", ":8003"},
-}
+// fleetSize is the whole cluster: nodeN binds to 8000+N. Raft's quorum
+// math (majority := (len(peers)+1)/2 + 1) is already size-agnostic, so
+// this is the only place the node count actually lives.
+const fleetSize = 10
+
+var nodes = func() []nodeConfig {
+	ns := make([]nodeConfig, fleetSize)
+	for i := range ns {
+		n := i + 1
+		ns[i] = nodeConfig{ID: fmt.Sprintf("node%d", n), Addr: fmt.Sprintf(":%d", 8000+n)}
+	}
+	return ns
+}()
 
 func httpAddr(addr string) string { return "localhost" + addr }
 
@@ -358,7 +366,7 @@ func main() {
 			log.Fatalf("failed to start %s: %v", n.ID, err)
 		}
 	}
-	emit("The fleet sets sail. Three ships launched, awaiting a Captain.")
+	emit("The fleet sets sail. %d ships launched, awaiting a Captain.", fleetSize)
 
 	go pollLoop()
 

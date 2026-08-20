@@ -29,7 +29,7 @@ the actual differentiation point of this repo:
 ./scripts/dashboard.sh
 ```
 
-then open **http://localhost:5173**. This launches a real 3-node fleet
+then open **http://localhost:5173**. This launches a real 10-node fleet
 (actual `flotillanode` OS processes, not a simulation) behind a small Go
 control-plane (`cmd/orchestrator`) and a React dashboard: watch the
 Captain get elected, submit cargo (writes) and fetch treasure

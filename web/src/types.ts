@@ -32,11 +32,13 @@ export interface GetReply {
   Error?: string
 }
 
-export const KNOWN_NODES: { id: string; addr: string }[] = [
-  { id: 'node1', addr: 'localhost:8001' },
-  { id: 'node2', addr: 'localhost:8002' },
-  { id: 'node3', addr: 'localhost:8003' },
-]
+// Mirrors fleetSize/nodes in cmd/orchestrator/main.go, nodeN on 8000+N.
+const FLEET_SIZE = 10
+
+export const KNOWN_NODES: { id: string; addr: string }[] = Array.from(
+  { length: FLEET_SIZE },
+  (_, i) => ({ id: `node${i + 1}`, addr: `localhost:${8000 + i + 1}` }),
+)
 
 export function idForAddr(addr: string): string | undefined {
   return KNOWN_NODES.find((n) => n.addr === addr)?.id

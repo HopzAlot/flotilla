@@ -20,10 +20,7 @@ the actual differentiation point of this repo:
   most recent committed write.
 
 ## Live dashboard
-
-![Flotilla dashboard](assets/dashboard.png)
-
-**Live demo:** [_replace with your deployed dashboard URL_](https://example.com)
+**Live demo:** (https://flotilla-rosy.vercel.app/)
 
 ```bash
 ./scripts/dashboard.sh

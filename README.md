@@ -1,4 +1,4 @@
-# flotilla
+# Flotilla
 
 A distributed key-value store built on Raft consensus, implemented from
 scratch in Go — no `hashicorp/raft`, no consensus library. This was a
@@ -20,6 +20,10 @@ the actual differentiation point of this repo:
   most recent committed write.
 
 ## Live dashboard
+
+![Flotilla dashboard](assets/dashboard.png)
+
+**Live demo:** [_replace with your deployed dashboard URL_](https://example.com)
 
 ```bash
 ./scripts/dashboard.sh
@@ -119,22 +123,6 @@ majority ack — not `reply.Success`, which can legitimately be false for
 an unrelated log-consistency reason — proves that. `waitForApply` then
 ensures the local state machine has actually caught up before the read
 runs.
-
-## Failover demo (Checkpoint C)
-
-`scripts/checkpoint_c.sh` is the portfolio demo: boots a 3-node cluster,
-writes a batch of keys, **kills the leader process (`kill -9`) mid-run**,
-keeps writing through the re-election window, then verifies every write
-that was actually acknowledged survived on the new leader — while writes
-that errored out (leader died before replying) are correctly treated as
-indeterminate, not failures, since Raft only promises "acked implies
-durable," never "unacked implies lost."
-
-```
-./scripts/checkpoint_c.sh
-```
-
-*(Recording of a live run: attach here.)*
 
 ## What I learned
 

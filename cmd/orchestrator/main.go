@@ -380,7 +380,32 @@ func main() {
 		}
 	})
 
-	addr := ":7500"
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "7500"
+	}
+	addr := ":" + port
 	log.Printf("orchestrator listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, mux))
+	log.Fatal(http.ListenAndServe(addr, withCORS(mux)))
+}
+
+// withCORS lets the dashboard live on a different origin than the
+// orchestrator, e.g. a Vercel-hosted frontend calling a Render-hosted
+// backend. Set ALLOWED_ORIGIN to lock this down to the real frontend URL
+// in production; it defaults to "*" so local/demo setups work unconfigured.
+func withCORS(next http.Handler) http.Handler {
+	allowedOrigin := os.Getenv("ALLOWED_ORIGIN")
+	if allowedOrigin == "" {
+		allowedOrigin = "*"
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

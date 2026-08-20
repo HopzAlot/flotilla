@@ -75,8 +75,8 @@ function App() {
 
       <main className="app__main">
         <div className="app__panels">
-          <CargoPanel aliveIds={aliveIds} />
-          <TreasurePanel aliveIds={aliveIds} />
+          <CargoPanel aliveIds={aliveIds} captainId={captain?.id} />
+          <TreasurePanel aliveIds={aliveIds} captainId={captain?.id} />
         </div>
         <ShipsLog events={events} />
       </main>

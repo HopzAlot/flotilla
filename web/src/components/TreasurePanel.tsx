@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import '../styles/shared.css'
 import { get } from '../api'
 import { KNOWN_NODES, idForAddr } from '../types'
@@ -6,13 +6,21 @@ import type { GetReply } from '../types'
 
 interface Props {
   aliveIds: string[]
+  captainId?: string
 }
 
-export default function TreasurePanel({ aliveIds }: Props) {
+export default function TreasurePanel({ aliveIds, captainId }: Props) {
   const [key, setKey] = useState('treasure')
   const [target, setTarget] = useState(KNOWN_NODES[0].id)
   const [result, setResult] = useState<GetReply | null>(null)
   const [loading, setLoading] = useState(false)
+
+  // if the ship we were asking just sank, don't leave the dropdown
+  // pointed at a corpse, follow the fleet to whoever's alive
+  useEffect(() => {
+    if (aliveIds.includes(target)) return
+    setTarget(captainId ?? aliveIds[0] ?? target)
+  }, [aliveIds, captainId, target])
 
   async function fetchKey(fromId: string) {
     if (!key) return
@@ -53,7 +61,16 @@ export default function TreasurePanel({ aliveIds }: Props) {
       {result && (
         <div className={`result ${result.Success && result.Found ? 'result--ok' : result.Success ? 'result--warn' : 'result--warn'}`}>
           {result.Error ? (
-            <>🌊 Couldn't reach that ship. Try another.</>
+            <>
+              🌊 Couldn't reach that ship, it's sunk.{' '}
+              {captainId ? (
+                <button className="btn btn--link" onClick={() => fetchKey(captainId)}>
+                  Ask the Captain, {captainId} →
+                </button>
+              ) : (
+                'No Captain known right now.'
+              )}
+            </>
           ) : result.Success && result.Found ? (
             <>
               💰 <strong>{key}</strong> = <span className="mono">{result.Value}</span>

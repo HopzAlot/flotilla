@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import '../styles/shared.css'
 import { submit } from '../api'
 import { KNOWN_NODES, idForAddr } from '../types'
@@ -6,15 +6,23 @@ import type { SubmitReply } from '../types'
 
 interface Props {
   aliveIds: string[]
+  captainId?: string
 }
 
-export default function CargoPanel({ aliveIds }: Props) {
+export default function CargoPanel({ aliveIds, captainId }: Props) {
   const [op, setOp] = useState<'PUT' | 'DELETE'>('PUT')
   const [key, setKey] = useState('treasure')
   const [value, setValue] = useState('doubloons')
   const [target, setTarget] = useState(KNOWN_NODES[0].id)
   const [result, setResult] = useState<SubmitReply | null>(null)
   const [loading, setLoading] = useState(false)
+
+  // if the ship we were talking to just sank, don't leave the dropdown
+  // pointed at a corpse, follow the fleet to whoever's alive
+  useEffect(() => {
+    if (aliveIds.includes(target)) return
+    setTarget(captainId ?? aliveIds[0] ?? target)
+  }, [aliveIds, captainId, target])
 
   async function send(toId: string) {
     if (!key) return
@@ -65,7 +73,16 @@ export default function CargoPanel({ aliveIds }: Props) {
           {result.Success ? (
             <>✅ Cargo confirmed by the fleet, safe in the hold.</>
           ) : result.Error ? (
-            <>🌊 Couldn't reach that ship. Try another.</>
+            <>
+              🌊 Couldn't reach that ship, it's sunk.{' '}
+              {captainId ? (
+                <button className="btn btn--link" onClick={() => send(captainId)}>
+                  Try the Captain, {captainId} →
+                </button>
+              ) : (
+                'No Captain known right now.'
+              )}
+            </>
           ) : (
             <>
               🧭 Wrong ship. {target} isn't Captain.{' '}

@@ -22,6 +22,9 @@ the actual differentiation point of this repo:
 ## Live dashboard
 **Live demo:** (https://flotilla-rosy.vercel.app/)
 
+
+**Try it on your own: Download the following...**
+
 ```bash
 ./scripts/dashboard.sh
 ```

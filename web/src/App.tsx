@@ -33,7 +33,7 @@ function App() {
   async function handleReset() {
     if (
       !window.confirm(
-        "Regroup the fleet? This wipes every ship's log and cargo and resets every watch back to 1, not just a display tweak.",
+        "Reset Fleets' Term? This wipes every ship's log and cargo and resets every watch back to 1, not just a display tweak.",
       )
     ) {
       return
@@ -76,7 +76,7 @@ function App() {
             <span className="pill pill--candidate">No Captain, the sea decides</span>
           )}
           <button className="btn btn--link app__reset" disabled={busy} onClick={handleReset}>
-            ⚓ Regroup the fleet
+            ⚓ Reset Fleets' Term
           </button>
         </div>
       </header>

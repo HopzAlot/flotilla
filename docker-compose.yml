@@ -1,0 +1,37 @@
+# 3-node Flotilla cluster on one Compose network.
+#
+# Networking: Compose puts every service on a private bridge network with an
+# embedded DNS server, so "node2" resolves to node2's container IP from inside
+# any other container. That replaces the localhost:800X ports of the shell-script
+# setup (inside a container, "localhost" is the container itself).
+#
+# Every node listens on :8001 *inside* its own container (no port clash, since
+# each has its own network namespace). Only the host-side ports differ.
+x-node: &node
+  image: flotilla:dev
+  build: .
+  restart: "no"   # a killed node must stay dead for chaos demos; K8s will restart pods later
+
+services:
+  node1:
+    <<: *node
+    command: ["-id=node1", "-addr=:8001", "-peers=node2=node2:8001,node3=node3:8001"]
+    ports: ["8001:8001"]
+    volumes: ["node1-data:/data"]
+  node2:
+    <<: *node
+    command: ["-id=node2", "-addr=:8001", "-peers=node1=node1:8001,node3=node3:8001"]
+    ports: ["8002:8001"]
+    volumes: ["node2-data:/data"]
+  node3:
+    <<: *node
+    command: ["-id=node3", "-addr=:8001", "-peers=node1=node1:8001,node2=node2:8001"]
+    ports: ["8003:8001"]
+    volumes: ["node3-data:/data"]
+
+# Named volumes: each node's BoltDB (<id>.db in /data) outlives its container.
+# `docker compose down` keeps them; `down -v` deletes them.
+volumes:
+  node1-data:
+  node2-data:
+  node3-data:

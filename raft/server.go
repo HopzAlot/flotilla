@@ -192,6 +192,14 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	s.node.persist()
 	term := s.node.currentTerm
 	index := entry.Index
+
+	// Single-node cluster: advanceCommitIndex is normally driven by peer
+	// AppendEntries replies, and a lone leader has no peers, so no reply ever
+	// arrives. Majority of one is the leader itself, so commit right here.
+	// (advanceCommitIndex requires n.mu held, which it is.)
+	if len(s.peers) == 0 {
+		s.advanceCommitIndex(term)
+	}
 	s.node.mu.Unlock()
 
 	log.Printf("[%s] Submit %+v -> appended at index %d, waiting for commit", s.node.id, cmd, index)

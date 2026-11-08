@@ -1,0 +1,8 @@
+.git
+web
+assets
+chaos-run
+orchestrator-run
+scripts
+*.db
+README.md
